@@ -55,7 +55,14 @@ function filteredRows() {
 
 function renderBoard() {
   const rows = filteredRows();
-  $('row-count').textContent = rows.length + ' of ' + R.rows.length + ' protocols on screen';
+  const active = [];
+  if (state.cat) active.push('category ' + state.cat);
+  if (state.chain) active.push('chain ' + state.chain);
+  if (state.watch) active.push('watchlist only');
+  if (state.q.trim()) active.push('search "' + state.q.trim() + '"');
+  $('row-count').textContent =
+    rows.length + ' of ' + R.rows.length + ' protocols on screen' +
+    (active.length ? ' — filtered by ' + active.join(', ') + '; ranks stay global' : '');
   $('empty').hidden = rows.length > 0;
   $('board-body').innerHTML = rows
     .map((r) => {
@@ -71,7 +78,7 @@ function renderBoard() {
         '<td class="num">' + money(r.tvl_usd) + '</td>' +
         '<td class="num ' + chg + '">' + pct(r.change_7d) + '</td>' +
         '<td class="num">' + ageText(r.age_days) + '</td>' +
-        '<td class="num">' + r.model.peer_multiple.toFixed(2) + '×</td>' +
+        '<td class="num">' + r.model.peer_multiple.toFixed(2) + '× <span class="pn">n' + r.model.peer_samples + '</span></td>' +
         '<td class="num implied">' + money(r.implied_value_usd) + '</td>' +
         '</tr>'
       );
@@ -88,10 +95,19 @@ function openDetail(slug) {
   if (!r) return;
   const m = r.model;
   const chgClass = r.change_7d === null ? '' : r.change_7d >= 0 ? 'up' : 'down';
-  const worked =
-    money(r.tvl_usd) + ' TVL × ' + m.peer_multiple.toFixed(3) + ' peer × ' +
-    m.growth_factor.toFixed(3) + ' growth × ' + m.seasoning_factor.toFixed(3) + ' seasoning × ' +
-    m.breadth_factor.toFixed(3) + ' breadth = ' + money(r.implied_value_usd);
+  const fx = (n) => n.toFixed(2) + '×';
+  const seasonNote =
+    r.age_days === null
+      ? 'no listing date recorded — neutral ×1.00, no age invented'
+      : ageText(r.age_days) + ' run with no token recorded';
+  const factorRows =
+    '<tr><td>TVL</td><td class="num">' + money(r.tvl_usd) + '</td><td>the size being priced</td></tr>' +
+    '<tr><td>Peer multiple</td><td class="num">' + fx(m.peer_multiple) + '</td><td>' + esc(m.peer_basis) + '</td></tr>' +
+    '<tr><td>Growth</td><td class="num">' + fx(m.growth_factor) + '</td><td>7-day TVL change ' + m.growth_pct.toFixed(1) + '%, damped; falls weigh twice rises</td></tr>' +
+    '<tr><td>Seasoning</td><td class="num">' + fx(m.seasoning_factor) + '</td><td>' + esc(seasonNote) + '</td></tr>' +
+    '<tr><td>Breadth</td><td class="num">' + fx(m.breadth_factor) + '</td><td>' + r.chains.length + ' chain(s) recorded</td></tr>' +
+    '<tr class="total"><td>Implied value</td><td class="num">' + money(r.implied_value_usd) + '</td><td>peer band ' +
+    money(r.implied_low_usd) + ' – ' + money(r.implied_high_usd) + ' at the peer set\'s p25–p75</td></tr>';
   $('detail').innerHTML =
     '<div class="detail-head"><h2>' + esc(r.name) + '</h2>' +
     '<span class="slug">' + esc(r.slug) + '</span>' +
@@ -99,7 +115,8 @@ function openDetail(slug) {
     '<span class="badge">Rank #' + r.rank + ' of ' + R.rows.length + '</span>' +
     '<button class="close" id="detail-close">Close ✕</button></div>' +
     '<div class="fact-grid">' +
-    '<div class="fact"><span>Implied value</span><b>' + money(r.implied_value_usd) + '</b></div>' +
+    '<div class="fact"><span>Implied value</span><b>' + money(r.implied_value_usd) + '</b><small>peer band ' +
+    money(r.implied_low_usd) + ' – ' + money(r.implied_high_usd) + '</small></div>' +
     '<div class="fact"><span>TVL</span><b>' + money(r.tvl_usd) + '</b></div>' +
     '<div class="fact"><span>7-day TVL change</span><b class="' + chgClass + '">' + pct(r.change_7d) + '</b></div>' +
     '<div class="fact"><span>Category</span><b>' + esc(r.category || 'Uncategorised') + '</b></div>' +
@@ -109,10 +126,8 @@ function openDetail(slug) {
     '<div class="fact"><span>Token status</span><b>None recorded</b></div>' +
     '</div>' +
     '<h3>How the value is worked out</h3>' +
-    '<p class="model-line">' + esc(worked) + '</p>' +
-    '<p class="model-note">Peer multiple ' + m.peer_multiple.toFixed(3) + '× is the ' + esc(m.peer_basis) +
-    '. Growth uses the clamped 7-day change of ' + m.growth_pct.toFixed(1) + '%; seasoning reflects ' +
-    ageText(r.age_days) + ' of operation with no token recorded; breadth counts ' + r.chains.length + ' chain(s).</p>' +
+    '<table class="factors">' + factorRows + '</table>' +
+    '<p class="model-note">The band is the same row priced at the peer set\'s p25 and p75 multiples: where peers disagree, the band is wide and the rank is a claim inside it, not a measurement.</p>' +
     '<h3>The farm plan</h3>' +
     '<ol class="steps">' + r.farm_steps.map((s) => '<li>' + esc(s) + '</li>').join('') + '</ol>';
   $('detail').hidden = false;
@@ -123,6 +138,18 @@ function openDetail(slug) {
     renderBoard();
   });
   renderBoard();
+}
+
+function renderPeers() {
+  if (!R.peers) return;
+  $('peer-body').innerHTML = R.peers
+    .map(
+      (p) =>
+        '<tr><td>' + esc(p.category) + '</td><td class="num">' + p.samples + '</td><td class="num">' +
+        p.multiple.toFixed(3) + '×</td><td class="num">' + p.p25.toFixed(3) + '×</td><td class="num">' +
+        p.p75.toFixed(3) + '×</td></tr>',
+    )
+    .join('');
 }
 
 function renderLive() {
@@ -166,14 +193,15 @@ function init() {
   $('meta-line').textContent =
     'Snapshot ' + R.as_of + ' · ' + R.source + ' · watchlist floor ' + money(R.floor_usd) + ' · model: ' + R.model_name;
   $('mast-stats').innerHTML =
+    '<div class="stat"><b>' + R.universe_size + '</b><span>in snapshot</span></div>' +
     '<div class="stat"><b>' + R.board_size + '</b><span>ranked</span></div>' +
-    '<div class="stat"><b>' + R.watchlist_size + '</b><span>watchlist</span></div>' +
-    '<div class="stat"><b>' + R.early_size + '</b><span>early finds</span></div>' +
-    '<div class="stat"><b>' + R.universe_size + '</b><span>in universe</span></div>';
+    '<div class="stat"><b>' + R.watchlist_size + '</b><span>of them watchlist</span></div>' +
+    '<div class="stat"><b>' + R.early_size + '</b><span>early finds added</span></div>';
   $('foot-meta').textContent =
     'board: ' + R.board_size + ' rows (' + R.watchlist_size + ' watchlist + ' + R.early_size + ' early) · live peer set: ' +
     R.live_size + ' · snapshot as of ' + R.as_of;
   fillSelects();
+  renderPeers();
   renderLive();
   renderBoard();
   applyHash();

@@ -10,26 +10,41 @@
 //   peer multiple   For each category, the protocols whose token already
 //                   trades give a market answer to "what is a dollar of TVL
 //                   worth here?": the median of mcap_usd / tvl_usd across the
-//                   live protocols of that category (at least 3 samples, else
-//                   the median across all live protocols). A pre-token
-//                   protocol is first valued as if the market priced its TVL
-//                   the way it prices its live peers'.
-//   growth factor   Seven-day TVL momentum, clamped to [-50%, +150%] and
-//                   damped: factor = 1 + clamp(change_7d) / 100 * 0.35,
-//                   never below 0.55. A rising protocol is worth more than a
-//                   shrinking one of the same size, but one hot week does not
-//                   double a valuation.
+//                   live protocols of that category. Raw category medians are
+//                   noisy — some categories hold three live peers whose
+//                   multiples span thirty-fold — so every category figure is
+//                   shrunk toward the global median across all live
+//                   protocols, on the log scale, weighted by sample count:
+//                   a category with many peers mostly speaks for itself, a
+//                   thin one mostly inherits the global answer. Categories under the sample
+//                   floor use the global median outright. One alias is
+//                   declared: Risk Curators, which has no live peers of its
+//                   own, is priced on the Onchain Capital Allocator peer
+//                   set — the same economic function, allocating other
+//                   people's capital — under the same shrinkage. The board
+//                   also carries the peer set's interquartile band, so a
+//                   row's value can be read as a range, not a point.
+//   growth factor   Seven-day TVL momentum, clamped to [-60%, +150%] and
+//                   damped asymmetrically: a fall is weighted twice a rise,
+//                   because a shrinking protocol is likelier distressed than
+//                   a rising one is re-rated. factor = 1 + pct/100 * weight,
+//                   never below 0.55. An unreported change counts as zero.
 //   seasoning       How long the protocol has run with no token recorded,
 //                   from listed_at to the snapshot's as_of. A launch after
 //                   years of tokenless operation rests on a longer record
-//                   than one after a month: factor rises linearly from 0.75
-//                   (brand new) to 1.25 at four years and holds there. An
-//                   unreported listing date is scored at the median age of
-//                   the dated protocols on the board.
-//   breadth         One extra point of value per additional chain beyond the
+//                   than one after a month: factor rises linearly from 0.85
+//                   (brand new) to 1.15 at four years and holds there. An
+//                   unreported listing date earns the neutral factor 1.0 —
+//                   the model does not invent an age it was not given.
+//   breadth         Half a point of value per additional chain beyond the
 //                   first, up to five: a protocol already deployed on six
-//                   chains has more surface for a token to govern.
+//                   chains has more surface for a token to govern. Kept
+//                   small, because TVL already sums across chains.
 //   implied value   round(tvl * peer_multiple * growth * seasoning * breadth)
+//                   The peer set conditions on protocols that launched and
+//                   survived to a tradable market cap, so the multiples lean
+//                   generous: read every implied value as an upper-leaning
+//                   anchor, and the p25–p75 band as the honest range.
 //
 // THE BOARD
 //   Every watchlist slug is ranked (the floor). Below the floor, the radar
@@ -65,7 +80,8 @@ export interface Snapshot {
 
 /** The model's tunable constants, printed in the dashboard's model panel. */
 export interface RadarModel {
-  growth_weight: number;
+  growth_weight_up: number;
+  growth_weight_down: number;
   growth_floor_pct: number;
   growth_cap_pct: number;
   growth_min_factor: number;
@@ -75,22 +91,25 @@ export interface RadarModel {
   breadth_per_chain: number;
   breadth_max_chains: number;
   peer_min_samples: number;
+  peer_shrink_k: number;
 }
 
 export const MODEL: RadarModel = {
-  growth_weight: 0.35,
-  growth_floor_pct: -50,
+  growth_weight_up: 0.15,
+  growth_weight_down: 0.3,
+  growth_floor_pct: -60,
   growth_cap_pct: 150,
   growth_min_factor: 0.55,
-  seasoning_new: 0.75,
-  seasoning_full: 1.25,
+  seasoning_new: 0.85,
+  seasoning_full: 1.15,
   seasoning_days: 1460,
-  breadth_per_chain: 0.02,
+  breadth_per_chain: 0.01,
   breadth_max_chains: 5,
   peer_min_samples: 3,
+  peer_shrink_k: 10,
 };
 
-export const MODEL_NAME = 'peer-multiple radar, v2';
+export const MODEL_NAME = 'peer-multiple radar, v3';
 
 /** Pre-token protocols below the watchlist floor that the board adds, by TVL. */
 export const EARLY_ROWS = 120;
@@ -115,9 +134,13 @@ export interface BoardRow {
   watchlist: boolean;
   age_days: number | null;
   implied_value_usd: number;
+  /** The same row priced at the peer set's shrunk p25 / p75 multiples: the honest range. */
+  implied_low_usd: number;
+  implied_high_usd: number;
   model: {
     peer_multiple: number;
     peer_basis: string;
+    peer_samples: number;
     growth_pct: number;
     growth_factor: number;
     seasoning_factor: number;
@@ -141,6 +164,15 @@ export interface LiveRow {
   multiple: number | null;
 }
 
+/** One peer set's summary, for the dashboard's evidence table. */
+export interface PeerRow {
+  category: string;
+  samples: number;
+  multiple: number;
+  p25: number;
+  p75: number;
+}
+
 /** Everything data.js carries to the page. */
 export interface RadarData {
   as_of: string;
@@ -155,6 +187,7 @@ export interface RadarData {
   live_size: number;
   rows: DashRow[];
   live: LiveRow[];
+  peers: PeerRow[];
 }
 
 /** The snapshot text is not a document this model can score. */
@@ -192,14 +225,68 @@ export function recordsToken(p: Protocol): boolean {
   return p.mcap_usd !== null || p.gecko_id !== null || p.symbol !== null;
 }
 
+/** One peer set's pricing: the shrunk median multiple and its shrunk interquartile band. */
+export interface PeerStat {
+  multiple: number;
+  low: number;
+  high: number;
+  samples: number;
+}
+
+/** Every peer set the model can price from: per category, plus the global fallback. */
+export interface PeerBook {
+  byCategory: Map<string, PeerStat>;
+  global: PeerStat;
+}
+
+/** A quantile of a sorted list, nearest-rank: enough for a band, not a thesis. */
+function quantile(sorted: number[], q: number): number {
+  if (sorted.length === 0) return 0;
+  const at = Math.min(sorted.length - 1, Math.max(0, Math.round(q * (sorted.length - 1))));
+  return sorted[at]!;
+}
+
+/**
+ * Pull a category figure toward the global one; the fewer the samples, the
+ * harder the pull. The blend runs on the log scale: multiples are ratios
+ * spanning orders of magnitude, so a thin category's evidence should move
+ * the global answer multiplicatively, never drag it past the scale of its
+ * own samples — three peers agreeing on 0.006 stay a small number, three
+ * disagreeing by thirty-fold land near the middle.
+ */
+function shrink(raw: number, globalRaw: number, samples: number, k: number): number {
+  const w = samples / (samples + k);
+  const a = Math.max(raw, 1e-4);
+  const b = Math.max(globalRaw, 1e-4);
+  return Math.exp(w * Math.log(a) + (1 - w) * Math.log(b));
+}
+
+function statOf(ratios: number[], globalRatios: number[] | null, model: RadarModel): PeerStat {
+  const sorted = [...ratios].sort((a, b) => a - b);
+  const med = median(sorted);
+  const lo = quantile(sorted, 0.25);
+  const hi = quantile(sorted, 0.75);
+  if (globalRatios === null) return { multiple: med, low: lo, high: hi, samples: ratios.length };
+  const gSorted = [...globalRatios].sort((a, b) => a - b);
+  return {
+    multiple: shrink(med, median(gSorted), ratios.length, model.peer_shrink_k),
+    low: shrink(lo, quantile(gSorted, 0.25), ratios.length, model.peer_shrink_k),
+    high: shrink(hi, quantile(gSorted, 0.75), ratios.length, model.peer_shrink_k),
+    samples: ratios.length,
+  };
+}
+
 /**
  * The peer multiples: for every category with at least peer_min_samples live
- * protocols, the median mcap/TVL of those protocols; plus the global median
- * across all live protocols as the fallback for thin categories.
+ * protocols, the median mcap/TVL of those protocols, shrunk toward the
+ * global median across all live protocols; the global set itself is the
+ * fallback for categories too thin to price.
  */
-export function peerMultiples(snapshot: Snapshot, model: RadarModel = MODEL): { byCategory: Map<string, number>; global: number } {
+export function peerMultiples(snapshot: Snapshot, model: RadarModel = MODEL): PeerBook {
   const live = snapshot.protocols.filter((p) => p.mcap_usd !== null && p.tvl_usd > 0);
-  const global = live.length > 0 ? median(live.map((p) => p.mcap_usd! / p.tvl_usd)) : 0.2;
+  const allRatios = live.map((p) => p.mcap_usd! / p.tvl_usd);
+  const global: PeerStat =
+    allRatios.length > 0 ? statOf(allRatios, null, model) : { multiple: 0.2, low: 0.1, high: 0.4, samples: 0 };
   const groups = new Map<string, number[]>();
   for (const p of live) {
     if (p.category === null) continue;
@@ -207,40 +294,107 @@ export function peerMultiples(snapshot: Snapshot, model: RadarModel = MODEL): { 
     list.push(p.mcap_usd! / p.tvl_usd);
     groups.set(p.category, list);
   }
-  const byCategory = new Map<string, number>();
+  const byCategory = new Map<string, PeerStat>();
   for (const [category, ratios] of groups) {
-    if (ratios.length >= model.peer_min_samples) byCategory.set(category, median(ratios));
+    if (ratios.length >= model.peer_min_samples) byCategory.set(category, statOf(ratios, allRatios, model));
   }
   return { byCategory, global };
 }
 
-/** The multiple one protocol is priced at, and where it came from. */
-function multipleFor(p: Protocol, peers: { byCategory: Map<string, number>; global: number }): { multiple: number; basis: string } {
-  if (p.category !== null && peers.byCategory.has(p.category)) {
-    return { multiple: peers.byCategory.get(p.category)!, basis: `median of live ${p.category} peers` };
+/**
+ * Categories with no live peers of their own that are priced on a sibling
+ * set performing the same economic function. Risk Curators allocate other
+ * people's capital into vaults; so do Onchain Capital Allocators, and that
+ * set has live tokens to price from.
+ */
+const PEER_ALIAS: Record<string, string> = { 'Risk Curators': 'Onchain Capital Allocator' };
+
+/** The peer set one protocol is priced on, and where it came from. */
+function multipleFor(p: Protocol, peers: PeerBook): { stat: PeerStat; basis: string } {
+  if (p.category !== null) {
+    const direct = peers.byCategory.get(p.category);
+    if (direct !== undefined) {
+      return { stat: direct, basis: `shrunk median of ${direct.samples} live ${p.category} peers` };
+    }
+    const alias = PEER_ALIAS[p.category];
+    if (alias !== undefined) {
+      const via = peers.byCategory.get(alias);
+      if (via !== undefined) {
+        return {
+          stat: via,
+          basis: `${p.category} has no live peers; priced on ${via.samples} live ${alias} peers, the same allocation function, shrunk toward the global median`,
+        };
+      }
+    }
   }
-  return { multiple: peers.global, basis: 'median of all live protocols' };
+  return { stat: peers.global, basis: `global median of ${peers.global.samples} live protocols (no usable category peers)` };
+}
+
+/** The peer sets as rows for the dashboard's evidence table, richest set first, fallback last. */
+export function peerRows(snapshot: Snapshot, model: RadarModel = MODEL): PeerRow[] {
+  const peers = peerMultiples(snapshot, model);
+  const rows: PeerRow[] = [...peers.byCategory.entries()]
+    .map(([category, s]) => ({ category, samples: s.samples, multiple: round4(s.multiple), p25: round4(s.low), p75: round4(s.high) }))
+    .sort((a, b) => b.samples - a.samples || (a.category < b.category ? -1 : 1));
+  rows.push({
+    category: 'All live protocols (the fallback)',
+    samples: peers.global.samples,
+    multiple: round4(peers.global.multiple),
+    p25: round4(peers.global.low),
+    p75: round4(peers.global.high),
+  });
+  return rows;
 }
 
 /** The four factors and the implied value one protocol earns under the model. */
 export function scoreProtocol(
   p: Protocol,
   asOf: string,
-  peers: { byCategory: Map<string, number>; global: number },
-  fallbackAgeDays: number,
+  peers: PeerBook,
   model: RadarModel = MODEL,
-): { implied: number; multiple: number; basis: string; growthPct: number; growthFactor: number; seasoningFactor: number; breadthFactor: number; age: number | null } {
+): {
+  implied: number;
+  impliedLow: number;
+  impliedHigh: number;
+  multiple: number;
+  basis: string;
+  samples: number;
+  growthPct: number;
+  growthFactor: number;
+  seasoningFactor: number;
+  breadthFactor: number;
+  age: number | null;
+} {
   const age = ageDays(asOf, p.listed_at);
-  const { multiple, basis } = multipleFor(p, peers);
+  const { stat, basis } = multipleFor(p, peers);
   const growthPct = Math.min(model.growth_cap_pct, Math.max(model.growth_floor_pct, p.change_7d ?? 0));
-  const growthFactor = Math.max(model.growth_min_factor, 1 + (growthPct / 100) * model.growth_weight);
-  const ageForSeasoning = age ?? fallbackAgeDays;
-  const seasoned = Math.min(Math.max(ageForSeasoning, 0), model.seasoning_days) / model.seasoning_days;
-  const seasoningFactor = model.seasoning_new + seasoned * (model.seasoning_full - model.seasoning_new);
+  const weight = growthPct >= 0 ? model.growth_weight_up : model.growth_weight_down;
+  const growthFactor = Math.max(model.growth_min_factor, 1 + (growthPct / 100) * weight);
+  // No recorded age earns no seasoning either way: the neutral factor, not an imputed age.
+  const seasoningFactor =
+    age === null
+      ? 1
+      : model.seasoning_new +
+        (Math.min(Math.max(age, 0), model.seasoning_days) / model.seasoning_days) * (model.seasoning_full - model.seasoning_new);
   const extraChains = Math.min(Math.max(p.chains.length - 1, 0), model.breadth_max_chains);
   const breadthFactor = 1 + extraChains * model.breadth_per_chain;
-  const implied = Math.max(1, Math.round(p.tvl_usd * multiple * growthFactor * seasoningFactor * breadthFactor));
-  return { implied, multiple, basis, growthPct, growthFactor, seasoningFactor, breadthFactor, age };
+  const rest = growthFactor * seasoningFactor * breadthFactor;
+  const implied = Math.max(1, Math.round(p.tvl_usd * stat.multiple * rest));
+  const impliedLow = Math.min(implied, Math.max(1, Math.round(p.tvl_usd * stat.low * rest)));
+  const impliedHigh = Math.max(implied, Math.max(1, Math.round(p.tvl_usd * stat.high * rest)));
+  return {
+    implied,
+    impliedLow,
+    impliedHigh,
+    multiple: stat.multiple,
+    basis,
+    samples: stat.samples,
+    growthPct,
+    growthFactor,
+    seasoningFactor,
+    breadthFactor,
+    age,
+  };
 }
 
 /** A name that marks a later release of another protocol: it is a pool, not a launch candidate. */
@@ -286,10 +440,8 @@ const round4 = (n: number): number => Math.round(n * 1e4) / 1e4;
 /** The ranked board: scored, ordered by implied value, ties separated a dollar at a time. */
 export function buildBoard(snapshot: Snapshot, model: RadarModel = MODEL): BoardRow[] {
   const peers = peerMultiples(snapshot, model);
-  const dated = snapshot.protocols.map((p) => ageDays(snapshot.as_of, p.listed_at)).filter((a): a is number => a !== null);
-  const fallbackAge = dated.length > 0 ? Math.round(median(dated)) : 365;
   const watch = new Set(snapshot.watchlist);
-  const scored = selectProtocols(snapshot).map((p) => ({ p, s: scoreProtocol(p, snapshot.as_of, peers, fallbackAge, model) }));
+  const scored = selectProtocols(snapshot).map((p) => ({ p, s: scoreProtocol(p, snapshot.as_of, peers, model) }));
   scored.sort((a, b) => b.s.implied - a.s.implied || b.p.tvl_usd - a.p.tvl_usd || (a.p.slug < b.p.slug ? -1 : 1));
   // Separate exact ties by a dollar so no two rows share a value and the order never rises.
   for (let i = 1; i < scored.length; i++) {
@@ -311,9 +463,12 @@ export function buildBoard(snapshot: Snapshot, model: RadarModel = MODEL): Board
     watchlist: watch.has(p.slug),
     age_days: s.age,
     implied_value_usd: s.implied,
+    implied_low_usd: s.impliedLow,
+    implied_high_usd: s.impliedHigh,
     model: {
       peer_multiple: round4(s.multiple),
       peer_basis: s.basis,
+      peer_samples: s.samples,
       growth_pct: Math.round(s.growthPct * 100) / 100,
       growth_factor: round4(s.growthFactor),
       seasoning_factor: round4(s.seasoningFactor),
@@ -358,6 +513,7 @@ export function buildRadar(snapshot: Snapshot, model: RadarModel = MODEL): { boa
     live_size: live.length,
     rows: board,
     live,
+    peers: peerRows(snapshot, model),
   };
   return { board, radar };
 }
@@ -483,7 +639,7 @@ function gasFor(chain: string): string {
 /** How long a position should be held to count, from the protocol's age. */
 function holdDaysFor(age: number | null): number {
   if (age === null) return 45;
-  if (age < 180) return 60;
+  if (age < 180) return 30;
   if (age < 730) return 45;
   return 30;
 }
@@ -524,7 +680,7 @@ function openingAction(p: Protocol, family: string, capital: number, chain: stri
     case 'dex':
       return `Add $${capital} of liquidity to a core ${n} pool on ${chain} (a stable or blue-chip pair keeps impermanent loss low) and leave the LP position open.`;
     case 'lending':
-      return `Supply $${capital} of USDC or ETH to ${n} on ${chain}; a supplied balance is the position most lending distributions count first.`;
+      return `Supply $${capital} of USDC or ETH to ${n} on ${chain}; a plain supplied balance is the position everything else in this plan builds on.`;
     case 'mint':
       return `Deposit $${capital} of collateral into ${n} on ${chain} and mint a conservative amount of its stable asset, keeping the collateral ratio well above liquidation.`;
     case 'bridge':
@@ -561,9 +717,9 @@ function secondAction(p: Protocol, family: string, capital: number, chain: strin
   const n = p.name;
   switch (family) {
     case 'dex':
-      return `Route your regular swaps on ${chain} through ${n} as well — aim for $${capital * 4} of cumulative swap volume a month, spread over several days, never in one block.`;
+      return `Route your regular swaps on ${chain} through ${n} as well — a working target is $${capital * 4} of cumulative swap volume a month (a discipline goal, not a published threshold), spread over several days, never in one block.`;
     case 'lending':
-      return `Borrow a small amount against the supply (under 30% of its value) and repay it a week later; one clean borrow-repay cycle shows the wallet uses both sides of ${n}.`;
+      return `Borrow a stablecoin against the supply, keeping the loan under 30% of its value and the health factor above 2, and repay it a week later; one clean borrow-repay cycle shows the wallet uses both sides of ${n}.`;
     case 'mint':
       return `Use the minted asset inside ${n}'s ecosystem — hold it or deposit it in its stability pool — rather than selling it the same day.`;
     case 'bridge':
@@ -571,9 +727,9 @@ function secondAction(p: Protocol, family: string, capital: number, chain: strin
     case 'staking':
       return `Restake or delegate a slice of the receipt once, if ${n} offers it natively, and vote in any governance poll the staking position entitles you to.`;
     case 'trading':
-      return `Trade on at least six separate days in the month, small size each time; ${n} counts consistent makers and takers, not one large print.`;
+      return `Trade on at least six separate days in the month, small size each time; a month of small prints is a more credible history than one large trade.`;
     case 'prediction':
-      return `Take positions in three different markets over the month and let at least one settle; settled history is what ${n} can measure.`;
+      return `Take positions in three different markets over the month and let at least one settle; a settled position is a finished record, not an open bet.`;
     case 'curator':
       return `Split a second, smaller deposit across a different ${n} vault so the wallet holds two curators' shares, and rebalance once a quarter.`;
     case 'asset':
@@ -595,7 +751,7 @@ function secondAction(p: Protocol, family: string, capital: number, chain: strin
   }
 }
 
-/** A protocol's farm plan: six steps, each an action with its cost and its time. */
+/** A protocol's farm plan: seven steps — setup, two actions, a cadence, a hold, a claim watch, and the risk that closes it. */
 export function farmPlan(p: Protocol, age: number | null): string[] {
   const family = familyOf(p.category);
   const capital = capitalFor(p);
@@ -617,17 +773,62 @@ export function farmPlan(p: Protocol, age: number | null): string[] {
   const opening = `${openingAction(p, family, capital, chain)}${chainNote} Cost: $${capital} of capital, ${gas} of gas per transaction. Time: about 15 minutes.`;
   const second = `${secondAction(p, family, capital, chain)} Cost: included in the position, plus ${gas} of gas each time. Time: 10 minutes a session.`;
   const cadenceAction = pick(p.slug, 5, ['a small top-up', 'a claim or rebalance', 'a vote or second deposit', 'a modest repeat of the opening action']);
-  const cadence = pick(p.slug, 2, [
-    `Repeat one qualifying action for ${p.name} every week — ${cadenceAction} — so the wallet appears in at least eight weekly snapshots. Cost: about ${gas} of gas a week. Time: 10 minutes a week.`,
-    `Keep a weekly rhythm with ${p.name}: ${cadenceAction} every 5–9 days, varying the amount, for at least two months. Cost: about ${gas} of gas a week. Time: 10 minutes a week.`,
-    `Show up at ${p.name} weekly rather than in a burst: ${cadenceAction} each week reads as a user; twenty transactions in one day reads as a script. Cost: about ${gas} of gas a week. Time: 10 minutes a week.`,
+  const honesty = 'No one outside the protocol knows what a future programme would count; the steady history is the part within your control.';
+  const cadenceCore = pick(p.slug, 2, [
+    `Repeat one qualifying action for ${p.name} every week — ${cadenceAction} — so the wallet's history spans at least eight weeks rather than a single burst`,
+    `Keep a weekly rhythm with ${p.name}: ${cadenceAction} every 5–9 days, varying the amount, for at least two months`,
+    `Show up at ${p.name} weekly rather than in a burst: ${cadenceAction} each week builds a record measured in months, the only kind a later snapshot can see`,
   ]);
+  const cadence =
+    chain === 'Ethereum'
+      ? `On Ethereum every touch costs $4–10 of gas, a heavy drag on $${capital} of capital, so batch the rhythm: ${cadenceAction} for ${p.name} once a fortnight, in larger size, instead of weekly. ${honesty} Cost: about $8–20 of gas a month. Time: 10 minutes a fortnight.`
+      : `${cadenceCore}. ${honesty} Cost: about ${gas} of gas a week. Time: 10 minutes a week.`;
   const holdStep = `Hold the position for at least ${hold} days before withdrawing anything. ${p.name} has operated ${ageText(age)} without a token, so a qualifying window measured in months, not days, is the safer bet. Cost: the $${capital} stays committed and carries the protocol's smart-contract risk. Time: ${hold} days.`;
   const claim = pick(p.slug, 3, [
     `If ${p.name} opens a points or rewards page, enrol the same wallet and check it monthly; claim only from a link the protocol itself publishes, and never pay a fee to claim. Cost: nothing to check. Time: 5 minutes a month.`,
     `Watch ${p.name}'s official announcements for a points programme or a token vote, and if one opens, register this wallet — the one with the history — rather than a new one. Cost: nothing. Time: 5 minutes a month.`,
-    `Should ${p.name} announce a token or a rewards season, this wallet's deposit and activity history is the claim; verify any claim page through the protocol's own site before signing anything. Cost: nothing to verify. Time: 10 minutes.`,
+    `Should ${p.name} announce a token or a rewards season, eligibility — if any — would be measured on wallets with a history already in place; verify any claim page through the protocol's own site before signing anything. Cost: nothing to verify. Time: 10 minutes.`,
   ]);
-  const log = `Keep a farm log for ${p.name}: wallet address, dates, amounts and transaction hashes, reviewed once a month, so you can prove the history or unwind in minutes. Cost: nothing. Time: 5 minutes a month.`;
-  return [setup, opening, second, cadence, holdStep, claim, log].slice(0, 7);
+  const risk = riskStep(p, family);
+  return [setup, opening, second, cadence, holdStep, claim, risk].slice(0, 7);
+}
+
+/** The plan's closing step: the concrete way this kind of position loses money, then the log habit. */
+function riskStep(p: Protocol, family: string): string {
+  const n = p.name;
+  const tail = `Keep a farm log for ${n} — wallet, dates, amounts, hashes — so the position can be proved or unwound in minutes.`;
+  switch (family) {
+    case 'dex':
+      return `Know the failure mode before the yield: a ${n} LP position loses to simply holding when prices diverge (impermanent loss), and the pool contract is the counterparty. ${tail}`;
+    case 'lending':
+      return `Know the failure mode: a fast collateral drop can liquidate a borrow, and ${n} itself can take bad debt in a cascade; keep the health factor above 2 and know which oracle prices your position. ${tail}`;
+    case 'mint':
+      return `Know the failure mode: ${n}'s stable asset can depeg, and the collateral behind a mint can be liquidated in a fast fall. Mint conservatively and watch the peg, not just the ratio. ${tail}`;
+    case 'bridge':
+      return `Know the failure mode: bridges are the most-hacked contracts in the sector, and the far-side asset is a wrapped claim, not the native coin. Cross with amounts you could afford to see stranded. ${tail}`;
+    case 'staking':
+      return `Know the failure mode: staking can be slashed for validator faults and usually locks the exit behind an unbonding queue; the receipt token can also trade below the underlying asset. ${tail}`;
+    case 'trading':
+      return `Know the failure mode: margin positions liquidate automatically and funding rates bleed a held position; a hedged book can still lose on both legs in a dislocation. ${tail}`;
+    case 'prediction':
+      return `Know the failure mode: a prediction position can go to zero at settlement, and markets can resolve on a disputed reading of the question. Size every ticket as money already spent. ${tail}`;
+    case 'curator':
+      return `Know the failure mode: a curator allocates your deposit into other protocols' vaults, so you carry the allocator's judgement plus every underlying vault's contract risk at once. Read what the vault actually holds. ${tail}`;
+    case 'asset':
+      return `Know the failure mode: a tokenised asset is a claim on an issuer or custodian; if the backing is questioned the asset depegs from what it tracks, and redemptions can queue. ${tail}`;
+    case 'insurance':
+      return `Know the failure mode: cover pays under the protocol's wording and at its discretion, and exclusions decide real claims. Read what is actually covered before counting a policy as protection. ${tail}`;
+    case 'launchpad':
+      return `Know the failure mode: sale tokens commonly vest or lock, and most launchpad allocations fall after listing. Treat the ticket as illiquid from the day you pay. ${tail}`;
+    case 'chain':
+      return `Know the failure mode: a young chain's bridge and flagship apps are its weakest points, and a token, if one comes, may be measured on a different window than your activity. ${tail}`;
+    case 'payments':
+      return `Know the failure mode: payment accounts can be frozen under compliance review, and a balance held with a provider is an unsecured claim on it. Keep working funds small. ${tail}`;
+    case 'privacy':
+      return `Know the failure mode: privacy pools attract regulatory attention and tainted deposits, and an exchange may question funds that passed through one. Keep amounts modest and records clean. ${tail}`;
+    case 'yield':
+      return `Know the failure mode: yield strategies stack leverage, depegs and contract risk to reach their rate; when one layer fails, the receipt share reprices all at once. ${tail}`;
+    default:
+      return `Know the failure mode: the position is a claim on ${n}'s contracts, and a bug, oracle failure or governance change can impair it without warning. Size it as money at risk, not savings. ${tail}`;
+  }
 }
