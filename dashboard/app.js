@@ -1,0 +1,187 @@
+'use strict';
+/* Token Launch Radar — the page's behaviour. Everything renders from
+   window.RADAR, the dataset main.ts writes beside this page as data.js.
+   No fetch, no network: open the file and it works.
+   Views are addressable by hash so a reader (or a screenshot) can land on
+   one: #detail=<slug>, #cat=<category>, #chain=<chain>, #q=<text>, #watch=1. */
+
+const R = window.RADAR;
+const $ = (id) => document.getElementById(id);
+
+function money(n) {
+  if (n === null || n === undefined) return '—';
+  if (n >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return '$' + (n / 1e3).toFixed(1) + 'K';
+  return '$' + Math.round(n);
+}
+
+function pct(n) {
+  if (n === null || n === undefined) return '—';
+  return (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+}
+
+function ageText(days) {
+  if (days === null || days === undefined) return '—';
+  if (days < 90) return days + 'd';
+  if (days < 730) return Math.round(days / 30.4) + ' mo';
+  return (days / 365.25).toFixed(1) + ' yr';
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+const state = { q: '', cat: '', chain: '', watch: false, sort: 'rank', detail: null };
+
+function filteredRows() {
+  const q = state.q.trim().toLowerCase();
+  let rows = R.rows.filter((r) => {
+    if (state.watch && !r.watchlist) return false;
+    if (state.cat && (r.category || '') !== state.cat) return false;
+    if (state.chain && !r.chains.includes(state.chain)) return false;
+    if (q && !(r.name.toLowerCase().includes(q) || r.slug.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  const by = {
+    rank: (a, b) => a.rank - b.rank,
+    tvl: (a, b) => b.tvl_usd - a.tvl_usd,
+    change: (a, b) => (b.change_7d ?? -1e9) - (a.change_7d ?? -1e9),
+    age: (a, b) => (b.age_days ?? -1) - (a.age_days ?? -1),
+    name: (a, b) => (a.name < b.name ? -1 : 1),
+  }[state.sort];
+  return rows.sort(by);
+}
+
+function renderBoard() {
+  const rows = filteredRows();
+  $('row-count').textContent = rows.length + ' of ' + R.rows.length + ' protocols on screen';
+  $('empty').hidden = rows.length > 0;
+  $('board-body').innerHTML = rows
+    .map((r) => {
+      const chg = r.change_7d === null ? '' : r.change_7d >= 0 ? 'up' : 'down';
+      const chains = r.chains.length === 0 ? '—' : r.chains.slice(0, 3).join(', ') + (r.chains.length > 3 ? ' +' + (r.chains.length - 3) : '');
+      return (
+        '<tr data-slug="' + esc(r.slug) + '"' + (state.detail === r.slug ? ' class="selected"' : '') + '>' +
+        '<td class="num">' + r.rank + '</td>' +
+        '<td><span class="pname">' + (r.watchlist ? '<span class="wdot" title="On the watchlist"></span>' : '') + esc(r.name) + '</span>' +
+        '<span class="pslug">' + esc(r.slug) + '</span></td>' +
+        '<td class="cat">' + esc(r.category || 'Uncategorised') + '</td>' +
+        '<td class="chains">' + esc(chains) + '</td>' +
+        '<td class="num">' + money(r.tvl_usd) + '</td>' +
+        '<td class="num ' + chg + '">' + pct(r.change_7d) + '</td>' +
+        '<td class="num">' + ageText(r.age_days) + '</td>' +
+        '<td class="num">' + r.model.peer_multiple.toFixed(2) + '×</td>' +
+        '<td class="num implied">' + money(r.implied_value_usd) + '</td>' +
+        '</tr>'
+      );
+    })
+    .join('');
+  for (const tr of document.querySelectorAll('#board-body tr')) {
+    tr.addEventListener('click', () => openDetail(tr.getAttribute('data-slug')));
+  }
+}
+
+function openDetail(slug) {
+  state.detail = slug;
+  const r = R.rows.find((x) => x.slug === slug);
+  if (!r) return;
+  const m = r.model;
+  const chgClass = r.change_7d === null ? '' : r.change_7d >= 0 ? 'up' : 'down';
+  const worked =
+    money(r.tvl_usd) + ' TVL × ' + m.peer_multiple.toFixed(3) + ' peer × ' +
+    m.growth_factor.toFixed(3) + ' growth × ' + m.seasoning_factor.toFixed(3) + ' seasoning × ' +
+    m.breadth_factor.toFixed(3) + ' breadth = ' + money(r.implied_value_usd);
+  $('detail').innerHTML =
+    '<div class="detail-head"><h2>' + esc(r.name) + '</h2>' +
+    '<span class="slug">' + esc(r.slug) + '</span>' +
+    (r.watchlist ? '<span class="badge watch">Watchlist</span>' : '<span class="badge">Early — below the floor</span>') +
+    '<span class="badge">Rank #' + r.rank + ' of ' + R.rows.length + '</span>' +
+    '<button class="close" id="detail-close">Close ✕</button></div>' +
+    '<div class="fact-grid">' +
+    '<div class="fact"><span>Implied value</span><b>' + money(r.implied_value_usd) + '</b></div>' +
+    '<div class="fact"><span>TVL</span><b>' + money(r.tvl_usd) + '</b></div>' +
+    '<div class="fact"><span>7-day TVL change</span><b class="' + chgClass + '">' + pct(r.change_7d) + '</b></div>' +
+    '<div class="fact"><span>Category</span><b>' + esc(r.category || 'Uncategorised') + '</b></div>' +
+    '<div class="fact"><span>Chains</span><b>' + (r.chains.length ? esc(r.chains.slice(0, 4).join(', ') + (r.chains.length > 4 ? ' +' + (r.chains.length - 4) : '')) : '—') + '</b></div>' +
+    '<div class="fact"><span>Running since</span><b>' + (r.listed_at || 'unreported') + '</b></div>' +
+    '<div class="fact"><span>Age, no token recorded</span><b>' + ageText(r.age_days) + '</b></div>' +
+    '<div class="fact"><span>Token status</span><b>None recorded</b></div>' +
+    '</div>' +
+    '<h3>How the value is worked out</h3>' +
+    '<p class="model-line">' + esc(worked) + '</p>' +
+    '<p class="model-note">Peer multiple ' + m.peer_multiple.toFixed(3) + '× is the ' + esc(m.peer_basis) +
+    '. Growth uses the clamped 7-day change of ' + m.growth_pct.toFixed(1) + '%; seasoning reflects ' +
+    ageText(r.age_days) + ' of operation with no token recorded; breadth counts ' + r.chains.length + ' chain(s).</p>' +
+    '<h3>The farm plan</h3>' +
+    '<ol class="steps">' + r.farm_steps.map((s) => '<li>' + esc(s) + '</li>').join('') + '</ol>';
+  $('detail').hidden = false;
+  $('detail-close').addEventListener('click', () => {
+    state.detail = null;
+    $('detail').hidden = true;
+    document.body.classList.remove('detail-mode');
+    renderBoard();
+  });
+  renderBoard();
+}
+
+function renderLive() {
+  $('live-grid').innerHTML = R.live
+    .map(
+      (l) =>
+        '<div class="live-card"><b>' + esc(l.name) + '</b><span class="lc-cat">' + esc(l.category || 'Uncategorised') + '</span>' +
+        '<span class="lc-nums">mcap ' + money(l.mcap_usd) + ' · TVL ' + money(l.tvl_usd) + ' · <em>' +
+        (l.multiple === null ? '—' : l.multiple.toFixed(2) + '× TVL') + '</em></span></div>',
+    )
+    .join('');
+}
+
+function fillSelects() {
+  const cats = [...new Set(R.rows.map((r) => r.category).filter(Boolean))].sort();
+  $('cat').innerHTML = '<option value="">All categories</option>' + cats.map((c) => '<option>' + esc(c) + '</option>').join('');
+  const chains = [...new Set(R.rows.flatMap((r) => r.chains))].sort();
+  $('chain').innerHTML = '<option value="">All chains</option>' + chains.map((c) => '<option>' + esc(c) + '</option>').join('');
+}
+
+function applyHash() {
+  const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+  if (h.get('q')) { state.q = h.get('q'); $('q').value = state.q; }
+  if (h.get('cat')) { state.cat = h.get('cat'); $('cat').value = state.cat; }
+  if (h.get('chain')) { state.chain = h.get('chain'); $('chain').value = state.chain; }
+  if (h.get('watch')) { state.watch = true; $('watch').checked = true; }
+  if (h.get('sort')) { state.sort = h.get('sort'); $('sort').value = state.sort; }
+  if (h.get('detail')) {
+    document.body.classList.add('detail-mode');
+    openDetail(h.get('detail'));
+  } else if (h.toString()) {
+    renderBoard();
+  }
+}
+
+function init() {
+  if (!R) {
+    $('meta-line').textContent = 'No dataset found: run main.ts first — it writes data.js beside this page.';
+    return;
+  }
+  $('meta-line').textContent =
+    'Snapshot ' + R.as_of + ' · ' + R.source + ' · watchlist floor ' + money(R.floor_usd) + ' · model: ' + R.model_name;
+  $('mast-stats').innerHTML =
+    '<div class="stat"><b>' + R.board_size + '</b><span>ranked</span></div>' +
+    '<div class="stat"><b>' + R.watchlist_size + '</b><span>watchlist</span></div>' +
+    '<div class="stat"><b>' + R.early_size + '</b><span>early finds</span></div>' +
+    '<div class="stat"><b>' + R.universe_size + '</b><span>in universe</span></div>';
+  $('foot-meta').textContent =
+    'board: ' + R.board_size + ' rows (' + R.watchlist_size + ' watchlist + ' + R.early_size + ' early) · live peer set: ' +
+    R.live_size + ' · snapshot as of ' + R.as_of;
+  fillSelects();
+  renderLive();
+  renderBoard();
+  applyHash();
+  $('q').addEventListener('input', (e) => { state.q = e.target.value; renderBoard(); });
+  $('cat').addEventListener('change', (e) => { state.cat = e.target.value; renderBoard(); });
+  $('chain').addEventListener('change', (e) => { state.chain = e.target.value; renderBoard(); });
+  $('watch').addEventListener('change', (e) => { state.watch = e.target.checked; renderBoard(); });
+  $('sort').addEventListener('change', (e) => { state.sort = e.target.value; renderBoard(); });
+}
+
+document.addEventListener('DOMContentLoaded', init);

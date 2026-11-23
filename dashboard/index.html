@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token Launch Radar — pre-token protocols ranked by implied launch value</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="masthead">
+  <svg class="scope" viewBox="0 0 120 120" aria-hidden="true">
+    <circle cx="60" cy="60" r="56" class="ring outer"/>
+    <circle cx="60" cy="60" r="38" class="ring"/>
+    <circle cx="60" cy="60" r="20" class="ring"/>
+    <line x1="60" y1="60" x2="60" y2="4" class="axis"/>
+    <line x1="60" y1="60" x2="116" y2="60" class="axis"/>
+    <path d="M60 60 L60 4 A56 56 0 0 1 99.6 20.4 Z" class="sweep"/>
+    <circle cx="86" cy="38" r="3.4" class="blip"/>
+    <circle cx="42" cy="74" r="2.6" class="blip dim"/>
+    <circle cx="70" cy="88" r="2.2" class="blip dim"/>
+  </svg>
+  <div class="mast-text">
+    <h1>Token Launch Radar</h1>
+    <p class="tagline">Protocols that record no token yet, ranked by what their launch would be worth — each with the farm plan to be early.</p>
+    <p class="meta" id="meta-line">Loading the snapshot…</p>
+  </div>
+  <div class="mast-stats" id="mast-stats"></div>
+</header>
+
+<section class="model-strip" id="model-strip">
+  <strong>The model</strong>
+  <span id="model-formula">implied value = TVL × peer multiple × growth × seasoning × breadth</span>
+  <span class="model-note">Peer multiple: the median market-cap/TVL of the same category's live tokens, from this snapshot. Growth damps the 7-day TVL change; seasoning rewards years run with no token; breadth counts extra chains. No name is special-cased.</span>
+</section>
+
+<nav class="controls" aria-label="Board controls">
+  <label class="ctl grow">Search
+    <input id="q" type="search" placeholder="Protocol name or slug…" autocomplete="off">
+  </label>
+  <label class="ctl">Category
+    <select id="cat"><option value="">All categories</option></select>
+  </label>
+  <label class="ctl">Chain
+    <select id="chain"><option value="">All chains</option></select>
+  </label>
+  <label class="ctl check">
+    <input id="watch" type="checkbox"> Watchlist only
+  </label>
+  <label class="ctl">Sort
+    <select id="sort">
+      <option value="rank">Implied value (rank)</option>
+      <option value="tvl">TVL</option>
+      <option value="change">7-day change</option>
+      <option value="age">Age (oldest first)</option>
+      <option value="name">Name A–Z</option>
+    </select>
+  </label>
+  <span class="count" id="row-count"></span>
+</nav>
+
+<main>
+  <section id="detail" class="detail" hidden></section>
+
+  <table class="board" id="board">
+    <thead>
+      <tr>
+        <th class="num">#</th>
+        <th>Protocol</th>
+        <th>Category</th>
+        <th>Chains</th>
+        <th class="num">TVL</th>
+        <th class="num">7d</th>
+        <th class="num">Age</th>
+        <th class="num">Peer ×</th>
+        <th class="num">Implied value</th>
+      </tr>
+    </thead>
+    <tbody id="board-body"></tbody>
+  </table>
+  <p class="empty" id="empty" hidden>No protocol matches those filters. Loosen one and sweep again.</p>
+
+  <section class="live" id="live">
+    <h2>Already trading — the peer set the multiples come from</h2>
+    <p class="live-note">These protocols record a token, so the board never ranks them; it prices the pre-token rows against what the market already pays for their TVL.</p>
+    <div class="live-grid" id="live-grid"></div>
+  </section>
+</main>
+
+<footer>
+  <p>Implied value is this radar's own claim, worked out from the sealed snapshot's figures alone; it is not a prediction that a token will be issued, or when. A protocol here records no token in DefiLlama's data — that is a record, not proof. Farm plans carry smart-contract and market risk; sizes are starting points, not advice.</p>
+  <p class="foot-meta" id="foot-meta"></p>
+</footer>
+
+<script src="../data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
