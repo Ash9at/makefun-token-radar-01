@@ -25,7 +25,7 @@
 // constants were chosen with these trials in view. The dashboard says
 // "calibration", not "proof".
 
-import { MODEL, MODEL_V1, peerMultiples, scoreProtocol } from './model.ts';
+import { MODEL, MODEL_NAIVE_CATEGORY, MODEL_NAIVE_GLOBAL, MODEL_V1, peerMultiples, scoreProtocol } from './model.ts';
 import type { AccuracyCategory, AccuracySummary, BandBook, BandFactors, RadarModel, Snapshot } from './model.ts';
 
 const LOG_2 = Math.log10(2);
@@ -136,6 +136,17 @@ export function runBacktest(snapshot: Snapshot, model: RadarModel = MODEL): { ac
   const v1Trials = runTrials(snapshot, MODEL_V1);
   const m = metricsOf(trials);
   const m1 = metricsOf(v1Trials);
+  const naive = (cfg: RadarModel, label: string) => {
+    const mm = metricsOf(runTrials(snapshot, cfg));
+    return {
+      label,
+      median_abs_log10: round3(mm.medianAbs),
+      typical_factor: Math.round(Math.pow(10, mm.medianAbs) * 10) / 10,
+      bias_log10: round3(mm.bias),
+      within_2x_pct: mm.within2,
+      within_3x_pct: mm.within3,
+    };
+  };
   const allErrs = trials.map((t) => t.err);
 
   // Per-category records and bands.
@@ -149,30 +160,45 @@ export function runBacktest(snapshot: Snapshot, model: RadarModel = MODEL): { ac
   const categories: AccuracyCategory[] = [];
   const bandByCategory = new Map<string, BandFactors>();
   for (const [category, list] of byCat) {
+    if (list.length >= BAND_MIN_TRIALS) {
+      bandByCategory.set(category, shrinkFactors(list.map((t) => t.err), allErrs, list.length));
+    }
+  }
+  const bands: BandBook = { byCategory: bandByCategory, global: factorsFromErrors(allErrs) };
+
+  // Band coverage on the same trials: how often the actual cap landed
+  // inside the band its category (or the global band) would have given it,
+  // overall and per category — published per category, because a band that
+  // covers 67% in one category and 27% in another should not hide behind
+  // the average.
+  let covered = 0;
+  const covByCat = new Map<string, { n: number; inside: number }>();
+  for (const t of trials) {
+    const f = (t.category !== null ? bands.byCategory.get(t.category) : undefined) ?? bands.global;
+    const inside = t.actual >= t.predicted * f.low && t.actual <= t.predicted * f.high;
+    if (inside) covered++;
+    if (t.category !== null) {
+      const e = covByCat.get(t.category) ?? { n: 0, inside: 0 };
+      e.n++;
+      if (inside) e.inside++;
+      covByCat.set(t.category, e);
+    }
+  }
+  for (const [category, list] of byCat) {
     const cm = metricsOf(list);
     if (list.length >= 3) {
+      const cov = covByCat.get(category);
       categories.push({
         category,
         trials: list.length,
         median_abs_log10: round3(cm.medianAbs),
         bias_log10: round3(cm.bias),
         within_2x_pct: cm.within2,
+        band_coverage_pct: cov !== undefined ? pct(cov.inside, cov.n) : 0,
       });
-    }
-    if (list.length >= BAND_MIN_TRIALS) {
-      bandByCategory.set(category, shrinkFactors(list.map((t) => t.err), allErrs, list.length));
     }
   }
   categories.sort((a, b) => b.trials - a.trials || (a.category < b.category ? -1 : 1));
-  const bands: BandBook = { byCategory: bandByCategory, global: factorsFromErrors(allErrs) };
-
-  // Band coverage on the same trials: how often the actual cap landed
-  // inside the band its category (or the global band) would have given it.
-  let covered = 0;
-  for (const t of trials) {
-    const f = (t.category !== null ? bands.byCategory.get(t.category) : undefined) ?? bands.global;
-    if (t.actual >= t.predicted * f.low && t.actual <= t.predicted * f.high) covered++;
-  }
 
   const histogram = HISTO_BINS.map((bin, i) => ({
     label: bin.label,
@@ -201,6 +227,10 @@ export function runBacktest(snapshot: Snapshot, model: RadarModel = MODEL): { ac
       within_2x_pct: m1.within2,
       within_3x_pct: m1.within3,
     },
+    baselines: [
+      naive(MODEL_NAIVE_GLOBAL, 'TVL × one global median'),
+      naive(MODEL_NAIVE_CATEGORY, 'TVL × raw category median'),
+    ],
   };
   return { accuracy, bands };
 }

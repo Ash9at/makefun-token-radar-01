@@ -110,3 +110,104 @@ exists — not as out-of-sample proof.
   vs 0.533 at 3, within-3× 44.5% / 43.8% vs 46.1%. General thin sets hurt;
   the floor stays at 3 and the alias exception stays narrow.
   (`tools/loo_floor_probe.ts` reproduces this.)
+
+## Stage 4 — critique round 1 (quant review) and what the evidence said
+
+An external quant review attacked the methodology on five points. Each was
+answered with a measurement, not an argument (`tools/loo_evidence.ts`,
+`tools/loo_bands_probe.ts`):
+
+- **"The gain is variant selection on the test set."** Split-half check:
+  splitting the 128 subjects into two halves and letting each half select
+  its own (size strength, cap) from a grid, both halves independently
+  chose strength 1 — and a tighter cap (3) than production used — and each
+  half's selected configuration scored on the other half exactly what it
+  scored at home (0.455 / 0.589). Selection cost for the size factor's
+  constants is approximately zero; the gain is structural. The same check
+  changed production: **the cap moved from [0.2, 5] to [1/3, 3]**, which
+  also improves the full-set LOO (0.520 → 0.510, typical miss ×/÷3.2,
+  bias −0.037, within-3× 46.9%).
+- **"Per-category bands are over-shrunk noise."** Partly sustained.
+  Per-category coverage ranges from 27% (Dexs) to 67% (RWA) around the
+  47.7% average, and sweeping the shrinkage k from 3 to 12 does not fix
+  Dexs: its errors are fat-tailed, so an interquartile band covers the
+  empty middle. The response is disclosure, not a wider fiction: the
+  accuracy table now publishes **band coverage per category** next to the
+  other per-category records, and the dashboard text says why.
+- **"Correct the survivorship bias instead of disclosing it."** The
+  proposed mechanism — an age-based downward adjustment — was fitted
+  before it was adopted: across the 95 dated live peers, log(mcap/TVL)
+  against years since listing has slope −0.003/year and correlation
+  −0.004. There is no age gradient in this snapshot to correct with, so
+  the adjustment would be an invented constant wearing a model's clothes.
+  Rejected on evidence; the disclosure ("priced the way it prices live
+  peers; values lean generous") stands, and the values are framed as
+  conditional on a launch being priced like the survivors'.
+- **"Replace the factor stack with one regression."** Benchmarked: a
+  log-linear OLS of log(mcap) on log(TVL), chains, 7d change, age and a
+  missing-age flag scores LOO median error 0.558; adding category dummies
+  worsens it to 0.601 (overfitting 128 points); ridge variants land
+  0.579–0.587. Every linear variant loses to the peer model's 0.510, and
+  the peer model stays legible factor-by-factor in a way a coefficient
+  vector is not. Rejected on evidence. (The censored-likelihood Tobit
+  variant was not implemented; its linear core was, and lost.)
+- **"Growth, seasoning and breadth are noise — drop them."** Half
+  sustained. Under the v4 configuration their combined ablation moves the
+  median error by 0.010 (0.520 with, 0.510 without — breadth is slightly
+  negative, the other two neutral). They stay, because the bounty brief
+  names 7-day growth and time-running-tokenless as model inputs, and a
+  ×1.00-neutral record adjustment is not an accuracy claim. The README
+  states plainly that the accuracy record rests on the peer multiple and
+  the size factor, and that the three small factors are within noise.
+  Pretending otherwise — in either direction — would be the dishonest
+  move.
+
+Final v4 numbers after the cap change (identical trials): median
+|log10 error| 0.510 (v1: 0.687), typical miss ×/÷3.2 (v1: ×/÷4.9), bias
+−0.037 (v1: −0.129), within 2× 26.6% (v1: 26.6%), within 3× 46.9%
+(v1: 35.9%), band coverage 47.7%.
+
+## Stage 4 — critique round 2 (hostile pairwise judge)
+
+A second review played the competition's pairwise judge against a
+hypothetical polished rival with a simple TVL × median model. Four
+attacks landed; the fixes are in the entry, not just in this file:
+
+- **"The top of the board is TVL × a constant — the size cap saturates."**
+  True in effect: every protocol above ~$330M TVL sits at the ×1/3 cap,
+  so within the top group the size factor no longer differentiates. The
+  cap itself is evidence-chosen (above), so the fix is legibility: the
+  model strip now states that the cap binds on the largest protocols and
+  why, and every detail view shows the size factor's dollar effect
+  ("without it this row would read $70.7M"), so the adjustment reads as a
+  measured haircut, not a sort order.
+- **"Rank 1 rests on the thinnest evidence plus a manual alias — and you
+  showcase it."** The alias is a category-level mapping, declared on
+  every row it prices and now also on the peer-evidence table itself
+  ("prices Risk Curators by declared alias"); it is not a per-name value,
+  which is what the brief prohibits. The showcase point was fair: the
+  detail screenshot now shows OnRe (RWA, 9 peers, category-calibrated
+  band, 8-row comparables table) instead of the alias-priced rank 1.
+- **"Your baseline is your own previous model, not the rival's simple
+  approach."** Fixed with data: the accuracy view now scores the two
+  naive approaches on the identical 128 trials — TVL × one global median
+  (typical miss ×/÷5.3) and TVL × raw category median (×/÷5.0, only
+  17.2% within 2×) — beside this model (×/÷3.2) and its predecessor
+  (×/÷4.9). The within-2× rate genuinely does not improve over the
+  predecessor (26.6% both); the table shows that too, and the gains are
+  claimed only where they exist: typical miss, within-3×, and bias.
+- **"The backtest can't validate seasoning."** Sustained and now stated
+  on the dashboard itself: the trials price protocols that did launch,
+  their recorded ages include post-token years, so seasoning is disclosed
+  as a record-based adjustment that the backtest cannot validate and the
+  ablation shows is accuracy-neutral.
+
+Rejected from this round: dropping the alias (the alternative — pricing
+the curator category on the global median — contradicts the snapshot's
+own evidence that allocators trade at a fifth of the global multiple,
+and the mapping is declared, category-level, and shrinkage-discounted);
+making bands protocol-specific (a band is an error range of a pricing
+set; per-protocol widths would be fabricated precision — per-category
+coverage is the honest answer); and hiding the accuracy view (a measured
+record is the strongest evidence the model is real; a rival's clean
+number is a claim, ours is a measurement).

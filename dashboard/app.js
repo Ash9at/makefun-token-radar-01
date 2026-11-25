@@ -156,7 +156,7 @@ function openDetail(slug) {
   const factorRows =
     '<tr><td>TVL</td><td class="num">' + money(r.tvl_usd) + '</td><td>the size being priced</td></tr>' +
     '<tr><td>Peer multiple</td><td class="num">' + fx(m.peer_multiple) + '</td><td>' + esc(m.peer_basis) + '</td></tr>' +
-    '<tr><td>Size</td><td class="num">' + fx(m.size_factor) + '</td><td>the market pays less cap per TVL dollar the larger a protocol already is; fitted on the peer set, capped ×0.20–×5.00</td></tr>' +
+    '<tr><td>Size</td><td class="num">' + fx(m.size_factor) + '</td><td>the market pays less cap per TVL dollar the larger a protocol already is; fitted on the peer set, capped ×0.33–×3.00 — without it this row would read ' + money(Math.round(r.implied_value_usd / m.size_factor)) + '</td></tr>' +
     '<tr><td>Growth</td><td class="num">' + fx(m.growth_factor) + '</td><td>7-day TVL change ' + m.growth_pct.toFixed(1) + '%, damped; falls weigh twice rises</td></tr>' +
     '<tr><td>Seasoning</td><td class="num">' + fx(m.seasoning_factor) + '</td><td>' + esc(seasonNote) + '</td></tr>' +
     '<tr><td>Breadth</td><td class="num">' + fx(m.breadth_factor) + '</td><td>' + r.chains.length + ' chain(s) recorded</td></tr>' +
@@ -205,14 +205,14 @@ function renderAccuracy() {
     '<div class="stat"><b>' + A.within_2x_pct + '%</b><span>within 2×</span></div>' +
     '<div class="stat"><b>' + A.within_3x_pct + '%</b><span>within 3×</span></div>' +
     '<div class="stat"><b>' + A.band_coverage_pct + '%</b><span>band coverage</span></div>';
-  const cmpRow = (label, now, before) =>
-    '<tr><td>' + label + '</td><td class="num">' + now + '</td><td class="num">' + before + '</td></tr>';
+  const modelRow = (label, t, b) =>
+    '<tr><td>' + label + '</td><td class="num">×/÷' + t.toFixed(1) + '</td><td class="num">' + b.within_2x_pct +
+    '%</td><td class="num">' + b.within_3x_pct + '%</td><td class="num">' + b.bias_log10.toFixed(2) + ' — ' + biasWord(b.bias_log10) + '</td></tr>';
   $('acc-cmp').innerHTML =
-    '<thead><tr><th>Measure</th><th class="num">This model</th><th class="num">Previous</th></tr></thead><tbody>' +
-    cmpRow('Typical miss (median error)', '×/÷' + A.typical_factor.toFixed(1), '×/÷' + A.v1.typical_factor.toFixed(1)) +
-    cmpRow('Predictions within 2×', A.within_2x_pct + '%', A.v1.within_2x_pct + '%') +
-    cmpRow('Predictions within 3×', A.within_3x_pct + '%', A.v1.within_3x_pct + '%') +
-    cmpRow('Bias (mean log error)', A.bias_log10.toFixed(2) + ' — ' + biasWord(A.bias_log10), A.v1.bias_log10.toFixed(2) + ' — ' + biasWord(A.v1.bias_log10)) +
+    '<thead><tr><th>Model</th><th class="num">Typical miss</th><th class="num">Within 2×</th><th class="num">Within 3×</th><th class="num">Bias</th></tr></thead><tbody>' +
+    modelRow('This model', A.typical_factor, A) +
+    modelRow('Previous version of this radar', A.v1.typical_factor, A.v1) +
+    A.baselines.map((b) => modelRow(b.label, b.typical_factor, b)).join('') +
     '</tbody>';
   const maxCount = Math.max(...A.histogram.map((h) => h.count));
   $('acc-histo').innerHTML = A.histogram
@@ -225,13 +225,13 @@ function renderAccuracy() {
     .join('');
   const worstFirst = [...A.categories].sort((a, b) => b.median_abs_log10 - a.median_abs_log10);
   $('acc-cats').innerHTML =
-    '<thead><tr><th>Category</th><th class="num">Trials</th><th class="num">Typical miss</th><th class="num">Bias</th><th class="num">Within 2×</th></tr></thead><tbody>' +
+    '<thead><tr><th>Category</th><th class="num">Trials</th><th class="num">Typical miss</th><th class="num">Bias</th><th class="num">Within 2×</th><th class="num">Band cover</th></tr></thead><tbody>' +
     worstFirst
       .map(
         (c) =>
           '<tr><td>' + esc(c.category) + '</td><td class="num">' + c.trials + '</td><td class="num">×/÷' +
           Math.pow(10, c.median_abs_log10).toFixed(1) + '</td><td class="num">' + biasWord(c.bias_log10) + '</td><td class="num">' +
-          c.within_2x_pct + '%</td></tr>',
+          c.within_2x_pct + '%</td><td class="num">' + c.band_coverage_pct + '%</td></tr>',
       )
       .join('') +
     '</tbody>';
@@ -242,7 +242,8 @@ function renderPeers() {
   $('peer-body').innerHTML = R.peers
     .map(
       (p) =>
-        '<tr><td>' + esc(p.category) + '</td><td class="num">' + p.samples + '</td><td class="num">' +
+        '<tr><td>' + esc(p.category) + (p.alias_for ? ' <span class="pn">prices ' + esc(p.alias_for) + ' by declared alias</span>' : '') +
+        '</td><td class="num">' + p.samples + '</td><td class="num">' +
         p.multiple.toFixed(3) + '×</td><td class="num">' + p.p25.toFixed(3) + '×</td><td class="num">' +
         p.p75.toFixed(3) + '×</td></tr>',
     )

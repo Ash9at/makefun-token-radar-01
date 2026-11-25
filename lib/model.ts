@@ -33,10 +33,10 @@
 //                   the program fits itself by least squares (−0.478 on
 //                   this snapshot). A row's multiple is adjusted by
 //                   10^(slope × (log10 TVL − log10 median peer TVL)),
-//                   capped to [0.2, 5] so no row is moved further than the
+//                   capped to [1/3, 3] so no row is moved further than the
 //                   evidence reaches. This is the one adjustment the
 //                   leave-one-out backtest credits with a large accuracy
-//                   gain (median log error 0.693 → 0.509); it is a
+//                   gain (median log error 0.687 → 0.510); it is a
 //                   market-wide effect, measured against the whole peer
 //                   set, not within a category.
 //   growth factor   Seven-day TVL momentum, clamped to [-60%, +150%] and
@@ -118,6 +118,8 @@ export interface RadarModel {
   peer_shrink_k: number;
   /** Peers must record a market cap above zero: a $0 token is not pricing evidence. */
   peer_positive_mcap_only: boolean;
+  /** Whether the declared category alias (PEER_ALIAS) may price a peerless category. Off for naive baselines. */
+  peer_alias_enabled: boolean;
   /** Strength of the fitted size factor: 0 disables it, 1 applies the fitted slope in full. */
   size_strength: number;
   size_cap_low: number;
@@ -138,9 +140,10 @@ export const MODEL: RadarModel = {
   peer_min_samples: 3,
   peer_shrink_k: 10,
   peer_positive_mcap_only: true,
+  peer_alias_enabled: true,
   size_strength: 1,
-  size_cap_low: 0.2,
-  size_cap_high: 5,
+  size_cap_low: 1 / 3,
+  size_cap_high: 3,
 };
 
 export const MODEL_NAME = 'peer-multiple radar, v4 (LOO-calibrated)';
@@ -150,6 +153,25 @@ export const MODEL_V1: RadarModel = {
   ...MODEL,
   peer_positive_mcap_only: false,
   size_strength: 0,
+};
+
+/** The simplest rival: every protocol at TVL × the one global median multiple. No factors at all. */
+export const MODEL_NAIVE_GLOBAL: RadarModel = {
+  ...MODEL_V1,
+  peer_alias_enabled: false,
+  peer_min_samples: Number.MAX_SAFE_INTEGER,
+  growth_up_weight: 0,
+  growth_down_weight: 0,
+  seasoning_min: 1,
+  seasoning_max: 1,
+  breadth_per_chain: 0,
+};
+
+/** The other simple rival: TVL × the raw category median, no shrinkage, no factors. */
+export const MODEL_NAIVE_CATEGORY: RadarModel = {
+  ...MODEL_NAIVE_GLOBAL,
+  peer_min_samples: 3,
+  peer_shrink_k: 0,
 };
 
 /** Pre-token protocols below the watchlist floor that the board adds, by TVL. */
@@ -213,6 +235,8 @@ export interface PeerRow {
   multiple: number;
   p25: number;
   p75: number;
+  /** Set when this row is a declared alias set: the category it prices. */
+  alias_for?: string;
 }
 
 /** A row's calibrated band as multiplicative factors on its implied value. */
@@ -242,6 +266,8 @@ export interface AccuracyCategory {
   median_abs_log10: number;
   bias_log10: number;
   within_2x_pct: number;
+  /** Share of this category's blind trials whose actual cap fell inside the band its rows carry. */
+  band_coverage_pct: number;
 }
 
 /** The leave-one-out backtest's summary, computed by lib/backtest.ts and shown on the accuracy view. */
@@ -267,6 +293,15 @@ export interface AccuracySummary {
     within_2x_pct: number;
     within_3x_pct: number;
   };
+  /** The naive approaches a simpler entry would take, scored on the identical trials. */
+  baselines: {
+    label: string;
+    median_abs_log10: number;
+    typical_factor: number;
+    bias_log10: number;
+    within_2x_pct: number;
+    within_3x_pct: number;
+  }[];
 }
 
 /** Everything data.js carries to the page. */
@@ -413,10 +448,12 @@ export function peerMultiples(snapshot: Snapshot, model: RadarModel = MODEL): Pe
     if (ratios.length >= model.peer_min_samples) byCategory.set(category, statOf(ratios, allRatios, model));
   }
   const aliasSets = new Map<string, PeerStat>();
-  for (const target of Object.values(PEER_ALIAS)) {
-    if (byCategory.has(target)) continue;
-    const ratios = groups.get(target);
-    if (ratios !== undefined && ratios.length > 0) aliasSets.set(target, statOf(ratios, allRatios, model));
+  if (model.peer_alias_enabled) {
+    for (const target of Object.values(PEER_ALIAS)) {
+      if (byCategory.has(target)) continue;
+      const ratios = groups.get(target);
+      if (ratios !== undefined && ratios.length > 0) aliasSets.set(target, statOf(ratios, allRatios, model));
+    }
   }
   // The size effect, fitted on the same peer set the multiples come from:
   // least squares of log10(mcap/TVL) on log10(TVL). Too few peers, no spread
@@ -456,7 +493,7 @@ const PEER_ALIAS: Record<string, string> = { 'Risk Curators': 'Onchain Capital A
 const ALIAS_TARGETS = new Set(Object.values(PEER_ALIAS));
 
 /** The peer set one protocol is priced on, where it came from, and the category its band is calibrated on. */
-function multipleFor(p: Protocol, peers: PeerBook): { stat: PeerStat; basis: string; bandCategory: string | null } {
+function multipleFor(p: Protocol, peers: PeerBook, model: RadarModel): { stat: PeerStat; basis: string; bandCategory: string | null } {
   if (p.category !== null) {
     const direct = peers.byCategory.get(p.category);
     if (direct !== undefined) {
@@ -466,7 +503,7 @@ function multipleFor(p: Protocol, peers: PeerBook): { stat: PeerStat; basis: str
     // for its economic function; its own members use its thin set too —
     // pricing the curators on a set while pricing the set's own members on
     // the global median would be the real inconsistency.
-    if (ALIAS_TARGETS.has(p.category)) {
+    if (model.peer_alias_enabled && ALIAS_TARGETS.has(p.category)) {
       const own = peers.aliasSets.get(p.category);
       if (own !== undefined) {
         return {
@@ -476,7 +513,7 @@ function multipleFor(p: Protocol, peers: PeerBook): { stat: PeerStat; basis: str
         };
       }
     }
-    const alias = PEER_ALIAS[p.category];
+    const alias = model.peer_alias_enabled ? PEER_ALIAS[p.category] : undefined;
     if (alias !== undefined) {
       const via = peers.byCategory.get(alias) ?? peers.aliasSets.get(alias);
       if (via !== undefined) {
@@ -497,6 +534,20 @@ export function peerRows(snapshot: Snapshot, model: RadarModel = MODEL): PeerRow
   const rows: PeerRow[] = [...peers.byCategory.entries()]
     .map(([category, s]) => ({ category, samples: s.samples, multiple: round4(s.multiple), p25: round4(s.low), p75: round4(s.high) }))
     .sort((a, b) => b.samples - a.samples || (a.category < b.category ? -1 : 1));
+  // Declared alias sets are evidence too: they price another category, and
+  // the evidence table says so on the row itself rather than hiding the
+  // mapping in a detail view's small print.
+  for (const [category, s] of peers.aliasSets) {
+    const aliasFor = Object.keys(PEER_ALIAS).find((k) => PEER_ALIAS[k] === category);
+    rows.push({
+      category,
+      samples: s.samples,
+      multiple: round4(s.multiple),
+      p25: round4(s.low),
+      p75: round4(s.high),
+      ...(aliasFor !== undefined ? { alias_for: aliasFor } : {}),
+    });
+  }
   rows.push({
     category: 'All live protocols (the fallback)',
     samples: peers.global.samples,
@@ -529,7 +580,7 @@ export function scoreProtocol(
   age: number | null;
 } {
   const age = ageDays(asOf, p.listed_at);
-  const { stat, basis, bandCategory } = multipleFor(p, peers);
+  const { stat, basis, bandCategory } = multipleFor(p, peers, model);
   // The size factor: the fitted slope applied to this protocol's distance
   // from the peer set's median TVL, capped to the range the evidence reaches.
   const sizeFactor =

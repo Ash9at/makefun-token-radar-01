@@ -30,7 +30,7 @@
 <section class="model-strip" id="model-strip">
   <strong>The model</strong>
   <span id="model-formula">implied value = TVL × peer multiple × size × growth × seasoning × breadth</span>
-  <span class="model-note">Peer multiple: the median market-cap/TVL of the same category's live tokens in this snapshot, shrunk toward the global median by sample count — thin categories inherit the global answer rather than posing as precise. Only tokens the market actually prices count as peers: 15 snapshot rows record a token at a $0 market cap, and a dead token is not evidence. Size: the market pays fewer dollars of cap per dollar of TVL the bigger a protocol already is (fitted slope −0.48 on log–log), so large rows are scaled down, capped at ×0.20–×5.00. Growth damps the 7-day TVL change, falls weighted twice rises; seasoning rewards years run with no token (an unreported age earns a neutral ×1.00, never an invented one); breadth adds a little per extra chain. No name is special-cased.</span>
+  <span class="model-note">Peer multiple: the median market-cap/TVL of the same category's live tokens in this snapshot, shrunk toward the global median by sample count — thin categories inherit the global answer rather than posing as precise. Only tokens the market actually prices count as peers: 15 snapshot rows record a token at a $0 market cap, and a dead token is not evidence. Size: the market pays fewer dollars of cap per dollar of TVL the bigger a protocol already is (fitted slope −0.48 on log–log), so large rows are scaled down, capped at ×0.33–×3.00. The cap binds on the largest protocols, deliberately: uncapped, the backtest showed the fitted slope over-discounting them. Growth damps the 7-day TVL change, falls weighted twice rises; seasoning rewards years run with no token (an unreported age earns a neutral ×1.00, never an invented one); breadth adds a little per extra chain. No name is special-cased.</span>
   <span class="model-note"><strong>How to read this:</strong> rank 1 is the largest estimated token value if the protocol launched today and the market priced its TVL the way it prices live peers'. The multiples come from protocols that launched and survived, so every value leans generous. The band under each value is not the peers' spread — it is this model's own measured error range, from the leave-one-out backtest in the accuracy section below: half of the model's blind predictions landed inside a band like it.</span>
 </section>
 
@@ -87,7 +87,7 @@
     <div class="acc-stats" id="acc-stats"></div>
     <div class="acc-cols">
       <div class="acc-box">
-        <h3 class="acc-h">This model vs the previous one — same 128 blind trials</h3>
+        <h3 class="acc-h">This model vs the simpler approaches — same 128 blind trials</h3>
         <table class="peer-table" id="acc-cmp"></table>
         <h3 class="acc-h">Where the blind predictions landed</h3>
         <div id="acc-histo"></div>
@@ -95,7 +95,7 @@
       <div class="acc-box">
         <h3 class="acc-h">Per category — weakest first, nothing hidden</h3>
         <table class="peer-table" id="acc-cats"></table>
-        <p class="model-note">Bridges and DEX rows carry the widest bands on the board because the model prices them worst: their market caps are set by things TVL does not record. The backtest runs on the same snapshot the model is fitted to — leave-one-out removes each subject from its own peer set, but the model's constants were chosen with these trials in view. Read this as calibration, not out-of-sample proof.</p>
+        <p class="model-note">Bridges and DEX rows carry the widest bands on the board because the model prices them worst: their market caps are set by things TVL does not record. Band cover is published per category because the average flatters some rows — an interquartile band should contain about half its trials, and where it plainly does not (DEXs, whose errors are fat-tailed), the table says so. One limit is structural: the trials price protocols that did launch, so they cannot validate the seasoning adjustment — a subject's recorded age includes its post-token years. Seasoning rests on the length of the record, not on a measured effect, and the ablation in the build notes shows it is accuracy-neutral. The backtest runs on the same snapshot the model is fitted to — leave-one-out removes each subject from its own peer set, but the model's constants were chosen with these trials in view. Read this as calibration, not out-of-sample proof.</p>
       </div>
     </div>
   </section>
