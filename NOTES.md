@@ -75,3 +75,38 @@ model, but hyperparameter choices (cap, slope strength) were selected on
 these same 128 trials. The dashboard therefore reports the LOO as what it
 is — a calibration of the model's error on the only labelled data that
 exists — not as out-of-sample proof.
+
+## Stage 2 — model v4, as implemented in lib/model.ts + lib/backtest.ts
+
+- Peer set requires mcap_usd > 0 (dead $0 tokens excluded as evidence).
+- Size factor added: fitted log-log slope, strength 1, capped [0.2, 5],
+  applied against the peer set's median TVL. Every board row exposes it
+  (`model.size_factor`), so the adjustment is auditable per row.
+- Bands are calibrated, not peer-spread: lib/backtest.ts runs the LOO
+  inside main.ts on every build; each row's low/high is its pricing
+  category's interquartile range of signed LOO errors (categories with
+  ≥8 trials, shrunk toward the global range with k=8), else the global
+  range. On the 128 trials the bands covered the actual cap 47.7% of the
+  time — the ~50% an interquartile band should cover, reported on the
+  dashboard next to the claim.
+- Production numbers (identical trials, identical arithmetic):
+  v1 median |log10 error| 0.687–0.693, within 2× 26.6%, within 3× 35.9%,
+  bias −0.125. v4: 0.520, 30.5%, 46.1%, bias −0.066. Typical miss improves
+  from ×/÷ 4.9 to ×/÷ 3.3. Still wide — the dashboard says so in words.
+
+### Two decisions the data forced
+
+- **The allocator set fell below the floor.** Dropping zero-mcap peers
+  left Onchain Capital Allocator with 2 priced peers (concrete, grove)
+  against the 3-sample floor, which silently moved every Risk Curators
+  row — the board's top — onto the global median. Fix: a category another
+  category aliases to keeps its set at any size (`aliasSets`), because the
+  alias is a declared judgement and the n/(n+k) shrinkage already prices
+  thinness (a 2-sample set carries weight 2/12). The set's own members
+  (Veda, Upshift) use it too; pricing curators on a set while pricing the
+  set's own members globally would be the real inconsistency.
+- **The floor itself was tested, not assumed.** LOO with peer_min_samples
+  at 2 and 1 (thin sets for every category): median error 0.544 / 0.556
+  vs 0.533 at 3, within-3× 44.5% / 43.8% vs 46.1%. General thin sets hurt;
+  the floor stays at 3 and the alias exception stays narrow.
+  (`tools/loo_floor_probe.ts` reproduces this.)

@@ -23,6 +23,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSyn
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { boardIssue, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
+import { runBacktest } from './lib/backtest.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
 const repoRoot = dirname(fileURLToPath(import.meta.url));
@@ -55,7 +56,10 @@ if (!existsSync(snapshotPath)) {
 const outDir = readArg('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output');
 
 const snapshot = parseSnapshot(readFileSync(snapshotPath, 'utf8'));
-const { board, radar } = buildRadar(snapshot);
+// The backtest runs first: its calibrated bands are part of the board, and
+// its accuracy summary rides in the dashboard's data.
+const { accuracy, bands } = runBacktest(snapshot);
+const { board, radar } = buildRadar(snapshot, undefined, { bands, accuracy });
 const issue = boardIssue(board, snapshot);
 if (issue !== null) fail(`the model produced a board the gate refuses: ${issue}`);
 
