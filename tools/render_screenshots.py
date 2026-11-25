@@ -11,9 +11,11 @@ Captures, at 1440 wide:
     4-filtered.jpg  the board filtered to one category (hash state, 1100 tall)
 
 Each capture is converted to JPEG with the highest quality whose size stays
-under ~350 KB, so the four land in the dossier's 300-350 KB band and never
-near the 512 KiB gate cap. No capture's long side exceeds 1440 px.
-Requires a Chromium binary (CHROME env var or
+under ~260 KB. The ceiling is set by the dossier, not by taste: the dossier
+inlines the images as base64 (x1.37) under a 1.5 MiB cap alongside the
+dashboard text, so four captures at ~260 KB leave it ~150 KB of headroom.
+(Three captures could afford ~340 KB each; four cannot.) No capture's long
+side exceeds 1440 px. Requires a Chromium binary (CHROME env var or
 /opt/meta-chromium/chrome) and Pillow.
 """
 import glob
@@ -37,7 +39,7 @@ def find_chrome() -> str:
 
 CHROME = find_chrome()
 WIDTH, HEIGHT = 1440, 1100
-TARGET_MAX = 350_000
+TARGET_MAX = 260_000
 
 
 def capture(url: str, png_path: str, height: int) -> None:
