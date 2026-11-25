@@ -166,15 +166,24 @@ export function runBacktest(snapshot: Snapshot, model: RadarModel = MODEL): { ac
   }
   const bands: BandBook = { byCategory: bandByCategory, global: factorsFromErrors(allErrs) };
 
-  // Band coverage on the same trials: how often the actual cap landed
-  // inside the band its category (or the global band) would have given it,
-  // overall and per category — published per category, because a band that
-  // covers 67% in one category and 27% in another should not hide behind
-  // the average.
+  // Band coverage, measured leave-self-out: the band each trial is tested
+  // against is built from the OTHER trials' errors (its category's, shrunk
+  // the same way, when the category has enough trials; the global range
+  // otherwise), so the coverage figure is a measurement, not a consequence
+  // of how the quantiles were drawn. The board's bands themselves use all
+  // trials — correctly, since board rows are not among the subjects.
   let covered = 0;
   const covByCat = new Map<string, { n: number; inside: number }>();
   for (const t of trials) {
-    const f = (t.category !== null ? bands.byCategory.get(t.category) : undefined) ?? bands.global;
+    const catList = t.category !== null ? (byCat.get(t.category) ?? []) : [];
+    let f: BandFactors;
+    if (t.category !== null && catList.length >= BAND_MIN_TRIALS) {
+      const catErrs = catList.filter((x) => x !== t).map((x) => x.err);
+      const globErrs = trials.filter((x) => x !== t).map((x) => x.err);
+      f = shrinkFactors(catErrs, globErrs, catErrs.length);
+    } else {
+      f = factorsFromErrors(trials.filter((x) => x !== t).map((x) => x.err));
+    }
     const inside = t.actual >= t.predicted * f.low && t.actual <= t.predicted * f.high;
     if (inside) covered++;
     if (t.category !== null) {
@@ -228,6 +237,11 @@ export function runBacktest(snapshot: Snapshot, model: RadarModel = MODEL): { ac
       within_3x_pct: m1.within3,
     },
     baselines: [
+      naive({ ...MODEL, size_strength: 0 }, 'This model, size factor removed'),
+      naive(
+        { ...MODEL, growth_up_weight: 0, growth_down_weight: 0, seasoning_min: 1, seasoning_max: 1, breadth_per_chain: 0 },
+        'This model, record factors removed',
+      ),
       naive(MODEL_NAIVE_GLOBAL, 'TVL × one global median'),
       naive(MODEL_NAIVE_CATEGORY, 'TVL × raw category median'),
     ],

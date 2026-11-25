@@ -211,3 +211,45 @@ set; per-protocol widths would be fabricated precision — per-category
 coverage is the honest answer); and hiding the accuracy view (a measured
 record is the strongest evidence the model is real; a rival's clean
 number is a claim, ours is a measurement).
+
+## Stage 4 — critique round 3 (the judge re-attacks the revised entry)
+
+- **"Is anything refit inside the folds?"** The slope, peer medians and
+  peer sets were always refit per fold (peerMultiples is rebuilt on the
+  snapshot-minus-subject for every trial) — but nothing on the page said
+  so. It does now, in the accuracy introduction, next to the split-half
+  result for the constants that are fixed. The comparison table also
+  gained the two ablation rows, so the attribution is visible rather
+  than asserted: size factor removed → typical miss ×/÷4.9 (from 3.2);
+  record factors removed → unchanged, exactly as disclosed.
+- **"Coverage is true by construction."** Fair as far as it went: the
+  47.7% figure tested each trial against quantiles that included it.
+  Coverage is now measured **leave-self-out** — each trial's band is
+  rebuilt from the other trials before testing it. The honest figure is
+  46.1%, and it is the one the dashboard prints, overall and per
+  category. (The board's bands still use all trials: board rows are not
+  trial subjects, so nothing leaks there.)
+- **"9 trials but 8 comparables."** A real catch: the comparables table
+  truncated at 8 while RWA has 9 priced peers. It now shows up to 12 and
+  states the total when truncated ("the 12 largest of 15 priced
+  peers"), so the two numbers can never silently disagree again.
+- **"Which band does an alias row actually carry?"** Every row now
+  records its band source, the detail view labels it ("this pricing
+  set's own range" vs "global range — too few blind trials for its
+  own"), the accuracy text states the ≥8-trial threshold, and a board
+  filter ("own-band pricing only", 51 of 160 rows) lets a reader keep
+  only rows priced on sets with their own calibrated band.
+- **"No plan totals."** Each detail view now opens the farm plan with an
+  all-in estimate — position plus the gas the steps' own per-transaction
+  ranges add up to over the first two months, minutes per week, and the
+  minimum hold — computed by farmPlanTotals from the same constants the
+  step prose quotes, so the summary cannot drift from the steps.
+- **Units.** Bias is labelled (log10) in the table header; typical miss
+  is defined in the footnote as 10^(median |log10 error|).
+
+Rejected from this round: re-sorting the board by band lower bound —
+the board's order is the implied-value ranking the bounty defines, and
+the band is printed under every value so overlap is visible rather than
+hidden; and deeper plan de-templating — the action and risk steps are
+already category-specific (sixteen action families, twenty-one risk
+kinds), and the totals line answers the concrete part of the charge.

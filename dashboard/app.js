@@ -32,12 +32,13 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-const state = { q: '', cat: '', chain: '', watch: false, sort: 'rank', detail: null };
+const state = { q: '', cat: '', chain: '', watch: false, validated: false, sort: 'rank', detail: null };
 
 function filteredRows() {
   const q = state.q.trim().toLowerCase();
   let rows = R.rows.filter((r) => {
     if (state.watch && !r.watchlist) return false;
+    if (state.validated && r.band_source !== 'category') return false;
     if (state.cat && (r.category || '') !== state.cat) return false;
     if (state.chain && !r.chains.includes(state.chain)) return false;
     if (q && !(r.name.toLowerCase().includes(q) || r.slug.toLowerCase().includes(q))) return false;
@@ -59,6 +60,7 @@ function renderBoard() {
   if (state.cat) active.push('category ' + state.cat);
   if (state.chain) active.push('chain ' + state.chain);
   if (state.watch) active.push('watchlist only');
+  if (state.validated) active.push('own-band pricing only');
   if (state.q.trim()) active.push('search "' + state.q.trim() + '"');
   $('row-count').textContent =
     rows.length + ' of ' + R.rows.length + ' protocols on screen' +
@@ -126,8 +128,13 @@ function accuracyLine(r) {
 function comparablesHtml(r) {
   const pc = pricingCategory(r);
   if (!pc || !R.comparables) return '';
-  const peers = R.comparables[pc] || [];
-  if (peers.length === 0) return '';
+  const entry = R.comparables[pc];
+  if (!entry || entry.peers.length === 0) return '';
+  const peers = entry.peers;
+  const more =
+    entry.total > peers.length
+      ? '<p class="model-note">The ' + peers.length + ' largest of ' + entry.total + ' priced ' + esc(pc) + ' peers, by TVL.</p>'
+      : '';
   return (
     '<h3>The peers behind the multiple</h3>' +
     '<table class="factors"><tr><td>Live peer</td><td class="num">Market cap</td><td class="num">TVL</td><td class="num">Cap / TVL</td></tr>' +
@@ -138,7 +145,8 @@ function comparablesHtml(r) {
           money(l.tvl_usd) + '</td><td class="num">' + l.multiple.toFixed(2) + '×</td></tr>',
       )
       .join('') +
-    '</table>'
+    '</table>' +
+    more
   );
 }
 
@@ -170,7 +178,7 @@ function openDetail(slug) {
     '<button class="close" id="detail-close">Close ✕</button></div>' +
     '<div class="fact-grid">' +
     '<div class="fact"><span>Implied value</span><b>' + money(r.implied_value_usd) + '</b><small>calibrated band ' +
-    money(r.implied_low_usd) + ' – ' + money(r.implied_high_usd) + '</small></div>' +
+    money(r.implied_low_usd) + ' – ' + money(r.implied_high_usd) + (r.band_source === 'category' ? ' (this pricing set\'s own range)' : ' (global range — too few blind trials for its own)') + '</small></div>' +
     '<div class="fact"><span>TVL</span><b>' + money(r.tvl_usd) + '</b></div>' +
     '<div class="fact"><span>7-day TVL change</span><b class="' + chgClass + '">' + pct(r.change_7d) + '</b></div>' +
     '<div class="fact"><span>Category</span><b>' + esc(r.category || 'Uncategorised') + '</b></div>' +
@@ -184,6 +192,9 @@ function openDetail(slug) {
     '<p class="model-note">' + esc(accuracyLine(r)) + '</p>' +
     comparablesHtml(r) +
     '<h3>The farm plan</h3>' +
+    '<p class="model-note">All-in estimate: ' + money(r.plan.position_usd) + ' position + about $' + Math.max(1, Math.round(r.plan.gas_low_usd)) +
+    '–' + Math.round(r.plan.gas_high_usd) + ' of gas across the first two months · ~' + r.plan.minutes_per_week +
+    ' minutes a week · ' + r.plan.hold_days + '-day minimum hold. The gas range is the steps\' own per-transaction ranges added over the plan\'s actions.</p>' +
     '<ol class="steps">' + r.farm_steps.map((s) => '<li>' + esc(s) + '</li>').join('') + '</ol>';
   $('detail').hidden = false;
   $('detail-close').addEventListener('click', () => {
@@ -209,7 +220,7 @@ function renderAccuracy() {
     '<tr><td>' + label + '</td><td class="num">×/÷' + t.toFixed(1) + '</td><td class="num">' + b.within_2x_pct +
     '%</td><td class="num">' + b.within_3x_pct + '%</td><td class="num">' + b.bias_log10.toFixed(2) + ' — ' + biasWord(b.bias_log10) + '</td></tr>';
   $('acc-cmp').innerHTML =
-    '<thead><tr><th>Model</th><th class="num">Typical miss</th><th class="num">Within 2×</th><th class="num">Within 3×</th><th class="num">Bias</th></tr></thead><tbody>' +
+    '<thead><tr><th>Model</th><th class="num">Typical miss</th><th class="num">Within 2×</th><th class="num">Within 3×</th><th class="num">Bias (log10)</th></tr></thead><tbody>' +
     modelRow('This model', A.typical_factor, A) +
     modelRow('Previous version of this radar', A.v1.typical_factor, A.v1) +
     A.baselines.map((b) => modelRow(b.label, b.typical_factor, b)).join('') +
@@ -274,6 +285,7 @@ function applyHash() {
   if (h.get('cat')) { state.cat = h.get('cat'); $('cat').value = state.cat; }
   if (h.get('chain')) { state.chain = h.get('chain'); $('chain').value = state.chain; }
   if (h.get('watch')) { state.watch = true; $('watch').checked = true; }
+  if (h.get('validated')) { state.validated = true; $('validated').checked = true; }
   if (h.get('sort')) { state.sort = h.get('sort'); $('sort').value = state.sort; }
   if (h.get('detail')) {
     document.body.classList.add('detail-mode');
@@ -311,6 +323,7 @@ function init() {
   $('cat').addEventListener('change', (e) => { state.cat = e.target.value; renderBoard(); });
   $('chain').addEventListener('change', (e) => { state.chain = e.target.value; renderBoard(); });
   $('watch').addEventListener('change', (e) => { state.watch = e.target.checked; renderBoard(); });
+  $('validated').addEventListener('change', (e) => { state.validated = e.target.checked; renderBoard(); });
   $('sort').addEventListener('change', (e) => { state.sort = e.target.value; renderBoard(); });
 }
 

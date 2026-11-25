@@ -197,9 +197,11 @@ export interface BoardRow {
   watchlist: boolean;
   age_days: number | null;
   implied_value_usd: number;
-  /** The same row priced at the peer set's shrunk p25 / p75 multiples: the honest range. */
+  /** The model's calibrated error band for this row's pricing set (lib/backtest.ts), not a peer spread. */
   implied_low_usd: number;
   implied_high_usd: number;
+  /** Which calibrated band the row carries: its pricing category's own, or the global range. */
+  band_source: 'category' | 'global';
   model: {
     peer_multiple: number;
     peer_basis: string;
@@ -211,6 +213,8 @@ export interface BoardRow {
     breadth_factor: number;
   };
   farm_steps: string[];
+  /** The plan's all-in totals, from the same constants the steps quote. */
+  plan: PlanTotals;
 }
 
 /** The dashboard's copy of one board row (farm plan included: the detail view shows it). */
@@ -320,7 +324,7 @@ export interface RadarData {
   live: LiveRow[];
   peers: PeerRow[];
   /** The largest priced live peers per category, for detail-view comparables tables. */
-  comparables: Record<string, PeerComparable[]>;
+  comparables: Record<string, { peers: PeerComparable[]; total: number }>;
   /** Present when main.ts ran the backtest: the model's measured record on blind pricing trials. */
   accuracy?: AccuracySummary;
 }
@@ -703,6 +707,8 @@ export function buildBoard(snapshot: Snapshot, model: RadarModel = MODEL, bands:
     implied_value_usd: s.implied,
     implied_low_usd: impliedLow,
     implied_high_usd: impliedHigh,
+    band_source:
+      bands !== null && s.bandCategory !== null && bands.byCategory.has(s.bandCategory) ? 'category' : 'global',
     model: {
       peer_multiple: round4(s.multiple),
       peer_basis: s.basis,
@@ -714,6 +720,7 @@ export function buildBoard(snapshot: Snapshot, model: RadarModel = MODEL, bands:
       breadth_factor: round4(s.breadthFactor),
     },
     farm_steps: farmPlan(p, s.age),
+    plan: farmPlanTotals(p, s.age),
     };
   });
 }
@@ -737,7 +744,7 @@ export function liveRows(snapshot: Snapshot): LiveRow[] {
 }
 
 /** The largest priced live peers of each category, richest-TVL first, for comparables tables. */
-function comparablesByCategory(snapshot: Snapshot): Record<string, PeerComparable[]> {
+function comparablesByCategory(snapshot: Snapshot): Record<string, { peers: PeerComparable[]; total: number }> {
   const groups = new Map<string, PeerComparable[]>();
   for (const p of snapshot.protocols) {
     if (p.category === null || p.mcap_usd === null || p.mcap_usd <= 0 || p.tvl_usd <= 0) continue;
@@ -745,9 +752,10 @@ function comparablesByCategory(snapshot: Snapshot): Record<string, PeerComparabl
     list.push({ name: p.name, mcap_usd: p.mcap_usd, tvl_usd: p.tvl_usd, multiple: round4(p.mcap_usd / p.tvl_usd) });
     groups.set(p.category, list);
   }
-  const out: Record<string, PeerComparable[]> = {};
+  const out: Record<string, { peers: PeerComparable[]; total: number }> = {};
   for (const [category, list] of groups) {
-    out[category] = list.sort((a, b) => b.tvl_usd - a.tvl_usd).slice(0, 8);
+    const sorted = list.sort((a, b) => b.tvl_usd - a.tvl_usd);
+    out[category] = { peers: sorted.slice(0, 12), total: sorted.length };
   }
   return out;
 }
@@ -896,6 +904,44 @@ function gasFor(chain: string): string {
   if (chain === 'Ethereum') return '$4–10';
   if (chain === 'Bitcoin') return '$1–3';
   return '$0.05–1.50';
+}
+
+/** The same gas range as numbers, for the plan's all-in estimate. */
+function gasRangeFor(chain: string): { low: number; high: number } {
+  if (chain === 'Ethereum') return { low: 4, high: 10 };
+  if (chain === 'Bitcoin') return { low: 1, high: 3 };
+  return { low: 0.05, high: 1.5 };
+}
+
+/** A farm plan's totals, derived from the same constants its steps quote. */
+export interface PlanTotals {
+  position_usd: number;
+  /** Estimated gas across the plan's first two months: opening + second action + the cadence touches. */
+  gas_low_usd: number;
+  gas_high_usd: number;
+  minutes_per_week: number;
+  hold_days: number;
+}
+
+/**
+ * What following the plan costs, all-in: the position the steps commit,
+ * the gas the steps' own per-transaction ranges add up to over the first
+ * two months (1 opening + 2 second-action sessions + 8 weekly cadence
+ * touches, or 4 fortnightly ones on Ethereum, matching the cadence step's
+ * own rhythm), the weekly minutes, and the minimum hold.
+ */
+export function farmPlanTotals(p: Protocol, age: number | null): PlanTotals {
+  const chain = p.chains.length > 0 ? p.chains[0]! : 'its main chain';
+  const g = gasRangeFor(chain);
+  const touches = chain === 'Ethereum' ? 4 : 8;
+  const actions = 3 + touches;
+  return {
+    position_usd: capitalFor(p),
+    gas_low_usd: Math.round(actions * g.low * 100) / 100,
+    gas_high_usd: Math.round(actions * g.high * 100) / 100,
+    minutes_per_week: chain === 'Ethereum' ? 5 : 10,
+    hold_days: holdDaysFor(age),
+  };
 }
 
 /** How long a position should be held to count, from the protocol's age. */

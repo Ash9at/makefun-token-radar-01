@@ -47,6 +47,9 @@
   <label class="ctl check">
     <input id="watch" type="checkbox"> Watchlist only
   </label>
+  <label class="ctl check">
+    <input id="validated" type="checkbox"> Own-band pricing only
+  </label>
   <label class="ctl">Sort
     <select id="sort">
       <option value="rank">Implied value (rank)</option>
@@ -83,12 +86,13 @@
 
   <section class="live" id="accuracy">
     <h2>Model accuracy — the model, graded on protocols it priced blind</h2>
-    <p class="live-note">A leave-one-out backtest inside this snapshot: each of the 128 protocols whose token already trades was removed from the peer set, priced by the model exactly as a pre-token protocol is priced, and compared with the market cap it actually carries. Fifteen further rows record a token at a $0 market cap — no price to predict against — and are excluded as subjects. The bands on the board come from these trials: each row carries the interquartile range of the model's own errors for its pricing set.</p>
+    <p class="live-note">A leave-one-out backtest inside this snapshot: each of the 128 protocols whose token already trades was removed from the peer set, priced by the model exactly as a pre-token protocol is priced, and compared with the market cap it actually carries. Inside every trial the peer set, its medians and the size slope are refitted from scratch without the subject; only the model's constants are fixed across trials. Fifteen further rows record a token at a $0 market cap — no price to predict against — and are excluded as subjects. The bands on the board come from these trials: each row carries the interquartile range of the model's own errors for its pricing set — the set's own range when it has at least 8 blind trials, the global range otherwise (the "own-band pricing only" filter above shows just the rows carrying their own). Band coverage is measured leave-self-out: each trial's band is rebuilt without that trial before checking whether its actual cap fell inside.</p>
     <div class="acc-stats" id="acc-stats"></div>
     <div class="acc-cols">
       <div class="acc-box">
         <h3 class="acc-h">This model vs the simpler approaches — same 128 blind trials</h3>
         <table class="peer-table" id="acc-cmp"></table>
+        <p class="model-note">Typical miss is 10 raised to the median absolute log10 error; bias is the mean log10 error, negative meaning the model leans low. The two "removed" rows are ablations on identical trials: they price what each part of the model earns. A split-half check — each half of the subjects selecting the model's constants for itself, then scoring the other half — measured the selection cost of the fixed constants at approximately zero.</p>
         <h3 class="acc-h">Where the blind predictions landed</h3>
         <div id="acc-histo"></div>
       </div>
