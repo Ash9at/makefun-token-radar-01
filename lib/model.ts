@@ -227,6 +227,14 @@ export interface BandBook {
   global: BandFactors;
 }
 
+/** One live peer behind a category's multiple, for a detail view's comparables table. */
+export interface PeerComparable {
+  name: string;
+  mcap_usd: number;
+  tvl_usd: number;
+  multiple: number;
+}
+
 /** One category's leave-one-out record, for the dashboard's accuracy view. */
 export interface AccuracyCategory {
   category: string;
@@ -276,6 +284,8 @@ export interface RadarData {
   rows: DashRow[];
   live: LiveRow[];
   peers: PeerRow[];
+  /** The largest priced live peers per category, for detail-view comparables tables. */
+  comparables: Record<string, PeerComparable[]>;
   /** Present when main.ts ran the backtest: the model's measured record on blind pricing trials. */
   accuracy?: AccuracySummary;
 }
@@ -675,6 +685,22 @@ export function liveRows(snapshot: Snapshot): LiveRow[] {
     }));
 }
 
+/** The largest priced live peers of each category, richest-TVL first, for comparables tables. */
+function comparablesByCategory(snapshot: Snapshot): Record<string, PeerComparable[]> {
+  const groups = new Map<string, PeerComparable[]>();
+  for (const p of snapshot.protocols) {
+    if (p.category === null || p.mcap_usd === null || p.mcap_usd <= 0 || p.tvl_usd <= 0) continue;
+    const list = groups.get(p.category) ?? [];
+    list.push({ name: p.name, mcap_usd: p.mcap_usd, tvl_usd: p.tvl_usd, multiple: round4(p.mcap_usd / p.tvl_usd) });
+    groups.set(p.category, list);
+  }
+  const out: Record<string, PeerComparable[]> = {};
+  for (const [category, list] of groups) {
+    out[category] = list.sort((a, b) => b.tvl_usd - a.tvl_usd).slice(0, 8);
+  }
+  return out;
+}
+
 /** The board and the dashboard's data, from one snapshot. */
 export function buildRadar(
   snapshot: Snapshot,
@@ -697,6 +723,7 @@ export function buildRadar(
     rows: board,
     live,
     peers: peerRows(snapshot, model),
+    comparables: comparablesByCategory(snapshot),
     ...(extra.accuracy !== undefined ? { accuracy: extra.accuracy } : {}),
   };
   return { board, radar };

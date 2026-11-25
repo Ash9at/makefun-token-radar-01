@@ -78,8 +78,10 @@ function renderBoard() {
         '<td class="num">' + money(r.tvl_usd) + '</td>' +
         '<td class="num ' + chg + '">' + pct(r.change_7d) + '</td>' +
         '<td class="num">' + ageText(r.age_days) + '</td>' +
-        '<td class="num">' + r.model.peer_multiple.toFixed(2) + '× <span class="pn">n' + r.model.peer_samples + '</span></td>' +
-        '<td class="num implied">' + money(r.implied_value_usd) + '</td>' +
+        '<td class="num">' + r.model.peer_multiple.toFixed(2) + '× <span class="pn">n' + r.model.peer_samples +
+        (r.model.size_factor !== 1 ? ' · size ' + r.model.size_factor.toFixed(2) : '') + '</span></td>' +
+        '<td class="num implied">' + money(r.implied_value_usd) +
+        '<span class="band">band ' + money(r.implied_low_usd) + ' – ' + money(r.implied_high_usd) + '</span></td>' +
         '</tr>'
       );
     })
@@ -87,6 +89,57 @@ function renderBoard() {
   for (const tr of document.querySelectorAll('#board-body tr')) {
     tr.addEventListener('click', () => openDetail(tr.getAttribute('data-slug')));
   }
+}
+
+/* The category whose live peers priced a row: its own when it has a peer
+   set on the evidence table, else the declared alias's, else its own when
+   it is itself an alias target (a thin set the model declares as evidence). */
+const PEER_ALIAS = { 'Risk Curators': 'Onchain Capital Allocator' };
+function pricingCategory(r) {
+  if (!r.category) return null;
+  if (R.peers && R.peers.some((p) => p.category === r.category)) return r.category;
+  if (PEER_ALIAS[r.category]) return PEER_ALIAS[r.category];
+  if (Object.values(PEER_ALIAS).includes(r.category)) return r.category;
+  return null;
+}
+
+/** This pricing set's record in the backtest, in one honest sentence. */
+function accuracyLine(r) {
+  const A = R.accuracy;
+  if (!A) return '';
+  const pc = pricingCategory(r);
+  const c = pc ? A.categories.find((x) => x.category === pc) : null;
+  if (c) {
+    return (
+      'On ' + c.trials + ' blind trials in ' + c.category + ', the model\'s typical miss was ×/÷' +
+      Math.pow(10, c.median_abs_log10).toFixed(1) + ' and ' + c.within_2x_pct +
+      '% of predictions landed within 2× of the actual cap. This row\'s band is that measured range.'
+    );
+  }
+  return (
+    'Across all ' + A.subjects + ' blind trials, the model\'s typical miss was ×/÷' + A.typical_factor.toFixed(1) +
+    '. This row is priced on a set with too few blind trials of its own, so its band is the global measured range.'
+  );
+}
+
+/** The live peers behind a row's multiple, as a comparables table. */
+function comparablesHtml(r) {
+  const pc = pricingCategory(r);
+  if (!pc || !R.comparables) return '';
+  const peers = R.comparables[pc] || [];
+  if (peers.length === 0) return '';
+  return (
+    '<h3>The peers behind the multiple</h3>' +
+    '<table class="factors"><tr><td>Live peer</td><td class="num">Market cap</td><td class="num">TVL</td><td class="num">Cap / TVL</td></tr>' +
+    peers
+      .map(
+        (l) =>
+          '<tr><td>' + esc(l.name) + '</td><td class="num">' + money(l.mcap_usd) + '</td><td class="num">' +
+          money(l.tvl_usd) + '</td><td class="num">' + l.multiple.toFixed(2) + '×</td></tr>',
+      )
+      .join('') +
+    '</table>'
+  );
 }
 
 function openDetail(slug) {
@@ -103,11 +156,12 @@ function openDetail(slug) {
   const factorRows =
     '<tr><td>TVL</td><td class="num">' + money(r.tvl_usd) + '</td><td>the size being priced</td></tr>' +
     '<tr><td>Peer multiple</td><td class="num">' + fx(m.peer_multiple) + '</td><td>' + esc(m.peer_basis) + '</td></tr>' +
+    '<tr><td>Size</td><td class="num">' + fx(m.size_factor) + '</td><td>the market pays less cap per TVL dollar the larger a protocol already is; fitted on the peer set, capped ×0.20–×5.00</td></tr>' +
     '<tr><td>Growth</td><td class="num">' + fx(m.growth_factor) + '</td><td>7-day TVL change ' + m.growth_pct.toFixed(1) + '%, damped; falls weigh twice rises</td></tr>' +
     '<tr><td>Seasoning</td><td class="num">' + fx(m.seasoning_factor) + '</td><td>' + esc(seasonNote) + '</td></tr>' +
     '<tr><td>Breadth</td><td class="num">' + fx(m.breadth_factor) + '</td><td>' + r.chains.length + ' chain(s) recorded</td></tr>' +
-    '<tr class="total"><td>Implied value</td><td class="num">' + money(r.implied_value_usd) + '</td><td>peer band ' +
-    money(r.implied_low_usd) + ' – ' + money(r.implied_high_usd) + ' at the peer set\'s p25–p75</td></tr>';
+    '<tr class="total"><td>Implied value</td><td class="num">' + money(r.implied_value_usd) + '</td><td>calibrated band ' +
+    money(r.implied_low_usd) + ' – ' + money(r.implied_high_usd) + ' — the model\'s measured error range for this pricing set</td></tr>';
   $('detail').innerHTML =
     '<div class="detail-head"><h2>' + esc(r.name) + '</h2>' +
     '<span class="slug">' + esc(r.slug) + '</span>' +
@@ -115,7 +169,7 @@ function openDetail(slug) {
     '<span class="badge">Rank #' + r.rank + ' of ' + R.rows.length + '</span>' +
     '<button class="close" id="detail-close">Close ✕</button></div>' +
     '<div class="fact-grid">' +
-    '<div class="fact"><span>Implied value</span><b>' + money(r.implied_value_usd) + '</b><small>peer band ' +
+    '<div class="fact"><span>Implied value</span><b>' + money(r.implied_value_usd) + '</b><small>calibrated band ' +
     money(r.implied_low_usd) + ' – ' + money(r.implied_high_usd) + '</small></div>' +
     '<div class="fact"><span>TVL</span><b>' + money(r.tvl_usd) + '</b></div>' +
     '<div class="fact"><span>7-day TVL change</span><b class="' + chgClass + '">' + pct(r.change_7d) + '</b></div>' +
@@ -127,7 +181,8 @@ function openDetail(slug) {
     '</div>' +
     '<h3>How the value is worked out</h3>' +
     '<table class="factors">' + factorRows + '</table>' +
-    '<p class="model-note">The band is the same row priced at the peer set\'s p25 and p75 multiples: where peers disagree, the band is wide and the rank is a claim inside it, not a measurement.</p>' +
+    '<p class="model-note">' + esc(accuracyLine(r)) + '</p>' +
+    comparablesHtml(r) +
     '<h3>The farm plan</h3>' +
     '<ol class="steps">' + r.farm_steps.map((s) => '<li>' + esc(s) + '</li>').join('') + '</ol>';
   $('detail').hidden = false;
@@ -138,6 +193,48 @@ function openDetail(slug) {
     renderBoard();
   });
   renderBoard();
+}
+
+function renderAccuracy() {
+  const A = R.accuracy;
+  if (!A) return;
+  const biasWord = (b) => (b <= -0.02 ? 'leans low' : b >= 0.02 ? 'leans high' : 'centred');
+  $('acc-stats').innerHTML =
+    '<div class="stat"><b>' + A.subjects + '</b><span>blind trials</span></div>' +
+    '<div class="stat"><b>×/÷' + A.typical_factor.toFixed(1) + '</b><span>typical miss</span></div>' +
+    '<div class="stat"><b>' + A.within_2x_pct + '%</b><span>within 2×</span></div>' +
+    '<div class="stat"><b>' + A.within_3x_pct + '%</b><span>within 3×</span></div>' +
+    '<div class="stat"><b>' + A.band_coverage_pct + '%</b><span>band coverage</span></div>';
+  const cmpRow = (label, now, before) =>
+    '<tr><td>' + label + '</td><td class="num">' + now + '</td><td class="num">' + before + '</td></tr>';
+  $('acc-cmp').innerHTML =
+    '<thead><tr><th>Measure</th><th class="num">This model</th><th class="num">Previous</th></tr></thead><tbody>' +
+    cmpRow('Typical miss (median error)', '×/÷' + A.typical_factor.toFixed(1), '×/÷' + A.v1.typical_factor.toFixed(1)) +
+    cmpRow('Predictions within 2×', A.within_2x_pct + '%', A.v1.within_2x_pct + '%') +
+    cmpRow('Predictions within 3×', A.within_3x_pct + '%', A.v1.within_3x_pct + '%') +
+    cmpRow('Bias (mean log error)', A.bias_log10.toFixed(2) + ' — ' + biasWord(A.bias_log10), A.v1.bias_log10.toFixed(2) + ' — ' + biasWord(A.v1.bias_log10)) +
+    '</tbody>';
+  const maxCount = Math.max(...A.histogram.map((h) => h.count));
+  $('acc-histo').innerHTML = A.histogram
+    .map(
+      (h) =>
+        '<div class="hrow"><span class="hlabel">' + esc(h.label) + '</span>' +
+        '<span class="hbar" style="width:' + Math.max(2, Math.round((h.count / maxCount) * 100)) + '%"></span>' +
+        '<span class="hcount">' + h.count + '</span></div>',
+    )
+    .join('');
+  const worstFirst = [...A.categories].sort((a, b) => b.median_abs_log10 - a.median_abs_log10);
+  $('acc-cats').innerHTML =
+    '<thead><tr><th>Category</th><th class="num">Trials</th><th class="num">Typical miss</th><th class="num">Bias</th><th class="num">Within 2×</th></tr></thead><tbody>' +
+    worstFirst
+      .map(
+        (c) =>
+          '<tr><td>' + esc(c.category) + '</td><td class="num">' + c.trials + '</td><td class="num">×/÷' +
+          Math.pow(10, c.median_abs_log10).toFixed(1) + '</td><td class="num">' + biasWord(c.bias_log10) + '</td><td class="num">' +
+          c.within_2x_pct + '%</td></tr>',
+      )
+      .join('') +
+    '</tbody>';
 }
 
 function renderPeers() {
@@ -183,6 +280,9 @@ function applyHash() {
   } else if (h.toString()) {
     renderBoard();
   }
+  if (h.get('view') === 'accuracy') {
+    document.body.classList.add('accuracy-mode');
+  }
 }
 
 function init() {
@@ -202,6 +302,7 @@ function init() {
     R.live_size + ' · snapshot as of ' + R.as_of;
   fillSelects();
   renderPeers();
+  renderAccuracy();
   renderLive();
   renderBoard();
   applyHash();

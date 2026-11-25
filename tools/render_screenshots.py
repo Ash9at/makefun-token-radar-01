@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Render the dashboard's three screenshots with a headless Chromium.
+"""Render the dashboard's four screenshots with a headless Chromium.
 
 Usage:
     python3 tools/render_screenshots.py <dashboard-index-url> <out-dir>
 
-Captures, at 1440x1100:
-    1-board.jpg     the board, unfiltered
-    2-detail.jpg    the detail view of the rank-1 protocol (hash state)
-    3-filtered.jpg  the board filtered to one category (hash state)
+Captures, at 1440 wide:
+    1-board.jpg     the board, unfiltered (1100 tall)
+    2-accuracy.jpg  the model-accuracy section (hash state, 1200 tall)
+    3-detail.jpg    the detail view of one protocol (hash state, 1400 tall)
+    4-filtered.jpg  the board filtered to one category (hash state, 1100 tall)
 
 Each capture is converted to JPEG with the highest quality whose size stays
-under ~350 KB, so the three land in the dossier's 300-350 KB band and never
-near the 512 KiB gate cap. Requires a Chromium binary (CHROME env var or
+under ~350 KB, so the four land in the dossier's 300-350 KB band and never
+near the 512 KiB gate cap. No capture's long side exceeds 1440 px.
+Requires a Chromium binary (CHROME env var or
 /opt/meta-chromium/chrome) and Pillow.
 """
 import glob
@@ -80,11 +82,12 @@ def main() -> int:
     # The detail and filter targets are read from the generated data by the
     # caller through environment variables, with sensible defaults.
     detail_slug = os.environ.get("SHOT_DETAIL_SLUG", "")
-    filter_cat = os.environ.get("SHOT_FILTER_CAT", "Lending")
+    filter_cat = os.environ.get("SHOT_FILTER_CAT", "RWA")
     views = [
         ("1-board.jpg", base_url, HEIGHT),
-        ("2-detail.jpg", f"{base_url}#detail={urllib.parse.quote(detail_slug)}", 1350),
-        ("3-filtered.jpg", f"{base_url}#cat={urllib.parse.quote(filter_cat)}", HEIGHT),
+        ("2-accuracy.jpg", f"{base_url}#view=accuracy", 1200),
+        ("3-detail.jpg", f"{base_url}#detail={urllib.parse.quote(detail_slug)}", 1400),
+        ("4-filtered.jpg", f"{base_url}#cat={urllib.parse.quote(filter_cat)}", HEIGHT),
     ]
     for name, url, height in views:
         png_path = os.path.join(out_dir, name.replace(".jpg", ".png"))

@@ -29,9 +29,9 @@
 
 <section class="model-strip" id="model-strip">
   <strong>The model</strong>
-  <span id="model-formula">implied value = TVL × peer multiple × growth × seasoning × breadth</span>
-  <span class="model-note">Peer multiple: the median market-cap/TVL of the same category's live tokens in this snapshot, shrunk toward the global median by sample count — thin categories inherit the global answer rather than posing as precise. Growth damps the 7-day TVL change, falls weighted twice rises; seasoning rewards years run with no token (an unreported age earns a neutral ×1.00, never an invented one); breadth adds a little per extra chain. No name is special-cased.</span>
-  <span class="model-note"><strong>How to read this:</strong> rank 1 is the largest estimated token value if the protocol launched today and the market priced its TVL the way it prices live peers'. The multiples come from protocols that launched and survived, so every value leans generous — open a row to see its peer band (the p25–p75 range) before quoting the number.</span>
+  <span id="model-formula">implied value = TVL × peer multiple × size × growth × seasoning × breadth</span>
+  <span class="model-note">Peer multiple: the median market-cap/TVL of the same category's live tokens in this snapshot, shrunk toward the global median by sample count — thin categories inherit the global answer rather than posing as precise. Only tokens the market actually prices count as peers: 15 snapshot rows record a token at a $0 market cap, and a dead token is not evidence. Size: the market pays fewer dollars of cap per dollar of TVL the bigger a protocol already is (fitted slope −0.48 on log–log), so large rows are scaled down, capped at ×0.20–×5.00. Growth damps the 7-day TVL change, falls weighted twice rises; seasoning rewards years run with no token (an unreported age earns a neutral ×1.00, never an invented one); breadth adds a little per extra chain. No name is special-cased.</span>
+  <span class="model-note"><strong>How to read this:</strong> rank 1 is the largest estimated token value if the protocol launched today and the market priced its TVL the way it prices live peers'. The multiples come from protocols that launched and survived, so every value leans generous. The band under each value is not the peers' spread — it is this model's own measured error range, from the leave-one-out backtest in the accuracy section below: half of the model's blind predictions landed inside a band like it.</span>
 </section>
 
 <nav class="controls" aria-label="Board controls">
@@ -58,7 +58,7 @@
   </label>
   <span class="count" id="row-count"></span>
 </nav>
-<p class="legend"><span class="wdot"></span>On the snapshot watchlist — TVL at or above the floor, no token recorded. <span class="legend-dim">Peer × is the shrunk category multiple; n is how many live peers priced it. Ranks are always global, even in a filtered view.</span></p>
+<p class="legend"><span class="wdot"></span>On the snapshot watchlist — TVL at or above the floor, no token recorded. <span class="legend-dim">Peer × is the shrunk category multiple; n is how many live peers priced it; the band under each implied value is the model's calibrated error range for that pricing set. Ranks are always global, even in a filtered view.</span></p>
 
 <main>
   <section id="detail" class="detail" hidden></section>
@@ -81,9 +81,28 @@
   </table>
   <p class="empty" id="empty" hidden>No protocol matches those filters. Loosen one and sweep again.</p>
 
+  <section class="live" id="accuracy">
+    <h2>Model accuracy — the model, graded on protocols it priced blind</h2>
+    <p class="live-note">A leave-one-out backtest inside this snapshot: each of the 128 protocols whose token already trades was removed from the peer set, priced by the model exactly as a pre-token protocol is priced, and compared with the market cap it actually carries. Fifteen further rows record a token at a $0 market cap — no price to predict against — and are excluded as subjects. The bands on the board come from these trials: each row carries the interquartile range of the model's own errors for its pricing set.</p>
+    <div class="acc-stats" id="acc-stats"></div>
+    <div class="acc-cols">
+      <div class="acc-box">
+        <h3 class="acc-h">This model vs the previous one — same 128 blind trials</h3>
+        <table class="peer-table" id="acc-cmp"></table>
+        <h3 class="acc-h">Where the blind predictions landed</h3>
+        <div id="acc-histo"></div>
+      </div>
+      <div class="acc-box">
+        <h3 class="acc-h">Per category — weakest first, nothing hidden</h3>
+        <table class="peer-table" id="acc-cats"></table>
+        <p class="model-note">Bridges and DEX rows carry the widest bands on the board because the model prices them worst: their market caps are set by things TVL does not record. The backtest runs on the same snapshot the model is fitted to — leave-one-out removes each subject from its own peer set, but the model's constants were chosen with these trials in view. Read this as calibration, not out-of-sample proof.</p>
+      </div>
+    </div>
+  </section>
+
   <section class="live" id="peers">
     <h2>The peer multiples, with their evidence</h2>
-    <p class="live-note">Every multiple the board uses, the live sample behind it, and the spread that sample actually shows. A category whose peers disagree thirty-fold prices its rows inside a wide band, and the board says so rather than hiding it in a point estimate.</p>
+    <p class="live-note">Every multiple the board uses, the live sample behind it, and the spread that sample actually shows. The p25–p75 columns are the peers' own spread — evidence about the sample, kept visible; the band on each board row is a different thing, calibrated on the model's backtest errors above. Peer sets count only tokens priced above $0.</p>
     <table class="peer-table" id="peer-table">
       <thead><tr><th>Peer set</th><th class="num">Live peers</th><th class="num">Multiple used</th><th class="num">Peer p25</th><th class="num">Peer p75</th></tr></thead>
       <tbody id="peer-body"></tbody>
