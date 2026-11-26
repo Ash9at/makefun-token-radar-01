@@ -159,6 +159,7 @@ body.accuracy-mode #accuracy { margin-top: 14px; }
 
 /* accuracy section */
 .acc-stats { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.acc-lead { font-size: 16.5px; line-height: 1.45; color: var(--ink); margin: 4px 0 14px; }
 .acc-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
 .acc-h { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--phosphor); }
 .acc-box .acc-h:not(:first-child) { margin-top: 18px; }

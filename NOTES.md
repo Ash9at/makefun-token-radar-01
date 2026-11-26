@@ -290,6 +290,30 @@ kinds), and the totals line answers the concrete part of the charge.
   least 17 of the top 20 — the production constants sit at the measured
   optimum of their neighbourhood and the ranking is not a tuning
   artefact. No constant was changed.
+- **Final hostile pairwise critique** (Claude Sonnet, judging the final
+  screenshots and README against a generic polished rival: bright
+  board-only dashboard, TVL × category median, point estimates, no
+  backtest). Verdict: this entry wins, on the strength of the graded
+  accuracy view. Three attacks, and what was done about them:
+  (1) "The headline accuracy numbers read weak before the baselines
+  register" — sustained as a framing point. The accuracy view now
+  carries one plain-language headline line directly above the stat
+  cards (typical miss ×/÷3.2 against ×/÷4.9 for the previous version
+  and ×/÷5.2 / ×/÷5.1 for the naive multiples). Every weak figure —
+  the 26.6% within-2×, the 46.1% coverage, the Dexs row — stays
+  exactly where it was.
+  (2) "Screenshot 1 is front-loaded with text; move the generosity
+  caveat to a footnote and the table up" — rejected. The model strip
+  is the formula disclosure the board is priced by, and its placement
+  above the table was itself a fix from an earlier judge round; the
+  caveat belongs where the values it qualifies are introduced, not in
+  a footnote. Cycle 1 of this pass already answered the density half
+  of the point by showing the full top 10.
+  (3) "Show 20+ rows in the board screenshot" — not possible honestly:
+  the 1440px long-side limit is already spent on the top 10 at
+  legible density. The README reorder it proposed (pitch, headline
+  numbers, detail later) is the order the README already has after
+  the "record, up front" section was added in this pass.
 
 ## Independent audit (2026-11-26) — corrections
 

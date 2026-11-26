@@ -87,6 +87,7 @@
   <section class="live" id="accuracy">
     <h2>Model accuracy — the model, graded on protocols it priced blind</h2>
     <p class="live-note">A leave-one-out backtest inside this snapshot: each of the 128 protocols whose token already trades was removed from the peer set, priced by the model exactly as a pre-token protocol is priced, and compared with the market cap it actually carries. Inside every trial the peer set, its medians and the size slope are refitted from scratch without the subject; only the model's constants are fixed across trials. Fifteen further rows record a token at a $0 market cap — no price to predict against — and are excluded as subjects. The bands on the board come from these trials: each row carries the interquartile range of the model's own errors for its pricing set — the set's own range when it has at least 8 blind trials, the global range otherwise (the "own-band pricing only" filter above shows just the rows carrying their own). Band coverage is measured leave-self-out: each trial's band is rebuilt without that trial before checking whether its actual cap fell inside.</p>
+    <p class="acc-lead">The headline: on these trials the model's typical miss is ×/÷3.2 — against ×/÷4.9 for this radar's previous version, and ×/÷5.2 and ×/÷5.1 for the two naive multiples scored in the table below.</p>
     <div class="acc-stats" id="acc-stats"></div>
     <div class="acc-cols">
       <div class="acc-box">
