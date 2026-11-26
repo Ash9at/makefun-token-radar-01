@@ -254,6 +254,43 @@ hidden; and deeper plan de-templating — the action and risk steps are
 already category-specific (sixteen action families, twenty-one risk
 kinds), and the totals line answers the concrete part of the charge.
 
+## Post-audit improvement cycles (2026-11-26)
+
+- **Screenshot density.** The board and filtered captures now render at
+  1440 tall instead of 1100, so the judge-scale board screenshot shows
+  the full top 10 (the same rows the README's table lists) instead of
+  the first six rows. Sizes stay under the renderer's 260 KB ceiling
+  and the dossier shrank slightly (1,384,659 bytes).
+- **Farm-plan mechanics.** The cadence step's recurring action was
+  picked from one generic list for every protocol, so 43 of 160 plans —
+  bridges included — prescribed "a vote or second deposit", an action
+  those protocols do not offer. The cadence action is now chosen per
+  mechanics family (a bridge crosses, a CDP mints or repays, a
+  prediction plan takes a position in another market…), the bridge and
+  prediction hold steps describe what holding means for them (funds at
+  work on the far side; tickets spread across the window), the curator
+  second action no longer claims "two curators' shares" for a second
+  vault of the same curator, and the DEX risk step picks its article
+  from the protocol's name ("an Arrakis … LP position").
+- **Sensitivity of the fitted constants** (`tools/loo_sensitivity.ts`,
+  identical snapshot, production backtest and board code per variant):
+
+  | variant | LOO median \|log10 err\| | within 3× | top-20 overlap | worst rank move |
+  |---|---|---|---|---|
+  | production (cap [1/3, 3], strength 1, k 10) | 0.510 | 46.9% | 20/20 | 0 |
+  | size cap [0.25, 4] | 0.520 | 46.1% | 20/20 | 5 |
+  | size cap [0.5, 2] | 0.556 | 42.2% | 18/20 | 2 |
+  | size cap [0.2, 5] (pre-critique) | 0.520 | 46.1% | 20/20 | 5 |
+  | size strength 0.8 | 0.540 | 43.0% | 19/20 | 3 |
+  | size strength 1.2 | 0.514 | 46.9% | 19/20 | 2 |
+  | peer shrinkage k 5 | 0.544 | 46.1% | 19/20 | 9 |
+  | peer shrinkage k 20 | 0.537 | 46.9% | 17/20 | 4 |
+
+  No perturbation improves the blind score, and every one keeps at
+  least 17 of the top 20 — the production constants sit at the measured
+  optimum of their neighbourhood and the ranking is not a tuning
+  artefact. No constant was changed.
+
 ## Independent audit (2026-11-26) — corrections
 
 An independent audit re-derived every headline figure from the snapshot
