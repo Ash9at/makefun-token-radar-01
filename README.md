@@ -10,6 +10,13 @@ The radar reads the sealed DefiLlama snapshot (758 protocols, fetched 2026-11-14
 
 This is the second version of the entry. The first version's model was honest but unmeasured; this one ships its own backtest, and several of its parts exist because the backtest demanded them. `NOTES.md` is the full build record, including the changes the evidence rejected.
 
+## The record, up front
+
+- **Graded, not asserted.** On 128 blind leave-one-out trials inside the snapshot, this model's typical miss is **×/÷3.2** — the previous version scored ×/÷4.9, and the two simple rivals (TVL × one global median, TVL × raw category median) score ×/÷5.2 and ×/÷5.1. 46.9% of the blind predictions land within 3× of the market cap the protocol actually carries; the bias is −0.04 (log10). The full table, including the rows that flatter nobody, is under "Measured accuracy" below.
+- **Bands that were measured.** Each row's range is the model's own backtest error range for its pricing category, not the peer set's spread. Measured leave-self-out, the bands covered the actual cap 46.1% of the time, against the ~50% an interquartile range should cover.
+- **Not a tuning artefact.** Perturbing the fitted constants — the size cap, the size strength, the peer shrinkage — never improves the blind score and keeps at least 17 of the top 20 in place (`tools/loo_sensitivity.ts` reproduces this).
+- **The board.** 160 pre-token protocols ranked by implied launch value: all 40 watchlist names plus the 120 strongest candidates below the floor, each with its factor breakdown and a 7-step farm plan.
+
 ## The model
 
 Implied value is computed for every row by the same formula, from the snapshot's own figures only — no protocol name is special-cased:
