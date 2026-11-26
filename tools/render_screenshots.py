@@ -5,10 +5,12 @@ Usage:
     python3 tools/render_screenshots.py <dashboard-index-url> <out-dir>
 
 Captures, at 1440 wide:
-    1-board.jpg     the board, unfiltered (1100 tall)
+    1-board.jpg     the board, unfiltered (1440 tall: the judge meets the
+                    entry as a thumbnail, so the board capture shows as
+                    many ranked rows as the 1440 long-side limit allows)
     2-accuracy.jpg  the model-accuracy section (hash state, 1200 tall)
     3-detail.jpg    the detail view of one protocol (hash state, 1400 tall)
-    4-filtered.jpg  the board filtered to one category (hash state, 1100 tall)
+    4-filtered.jpg  the board filtered to one category (hash state, 1440 tall)
 
 Each capture is converted to JPEG with the highest quality whose size stays
 under ~260 KB. The ceiling is set by the dossier, not by taste: the dossier
@@ -39,6 +41,7 @@ def find_chrome() -> str:
 
 CHROME = find_chrome()
 WIDTH, HEIGHT = 1440, 1100
+BOARD_HEIGHT = 1440
 TARGET_MAX = 260_000
 
 
@@ -86,10 +89,10 @@ def main() -> int:
     detail_slug = os.environ.get("SHOT_DETAIL_SLUG", "")
     filter_cat = os.environ.get("SHOT_FILTER_CAT", "RWA")
     views = [
-        ("1-board.jpg", base_url, HEIGHT),
+        ("1-board.jpg", base_url, BOARD_HEIGHT),
         ("2-accuracy.jpg", f"{base_url}#view=accuracy", 1200),
         ("3-detail.jpg", f"{base_url}#detail={urllib.parse.quote(detail_slug)}", 1400),
-        ("4-filtered.jpg", f"{base_url}#cat={urllib.parse.quote(filter_cat)}", HEIGHT),
+        ("4-filtered.jpg", f"{base_url}#cat={urllib.parse.quote(filter_cat)}", BOARD_HEIGHT),
     ]
     for name, url, height in views:
         png_path = os.path.join(out_dir, name.replace(".jpg", ".png"))
