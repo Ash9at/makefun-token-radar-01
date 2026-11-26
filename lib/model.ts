@@ -1039,7 +1039,7 @@ function secondAction(p: Protocol, family: string, capital: number, chain: strin
     case 'prediction':
       return `Take positions in three different markets over the month and let at least one settle; a settled position is a finished record, not an open bet.`;
     case 'curator':
-      return `Split a second, smaller deposit across a different ${n} vault so the wallet holds two curators' shares, and rebalance once a quarter.`;
+      return `Split a second, smaller deposit across a different ${n} vault so the wallet holds shares in two of its vaults, and rebalance once a quarter.`;
     case 'asset':
       return `Provide a small amount of the asset as liquidity or lend it where ${n} integrates, so the holding is active rather than parked.`;
     case 'insurance':
@@ -1057,6 +1057,53 @@ function secondAction(p: Protocol, family: string, capital: number, chain: strin
     default:
       return `Use one more of ${n}'s features beyond the deposit — a vote, a referral-free second deposit or its secondary market — so the wallet is a user, not a balance.`;
   }
+}
+
+/** The cadence step's recurring action, in the family's own mechanics: a
+ * generic "vote or second deposit" is not an action a bridge or a CDP
+ * offers, so each family names the small repeatable thing its users
+ * actually do. */
+function cadenceActionsFor(family: string): readonly string[] {
+  switch (family) {
+    case 'dex':
+      return ['a small swap', 'a small LP top-up', 'a rebalance of the LP position'];
+    case 'lending':
+      return ['a small top-up of the supply', 'a small borrow-and-repay cycle', 'a modest repeat of the supply'];
+    case 'mint':
+      return ['a small mint or repay', 'a collateral top-up', 'a modest repeat of the mint'];
+    case 'bridge':
+      return ['another crossing, in either direction', 'a small crossing on the same route', 'a return crossing with a varied amount'];
+    case 'staking':
+      return ['a rewards claim', 'a small additional stake', 'a claim or restake of the rewards'];
+    case 'trading':
+      return ['a small trade', 'a modest repeat of the opening trade', 'a small position adjustment'];
+    case 'prediction':
+      return ['a position in another market', 'a small position in a new market', 'a modest repeat in a liquid market'];
+    case 'curator':
+      return ['a small top-up into the same vault', 'a modest repeat of the deposit', 'a small deposit into the second vault'];
+    case 'asset':
+      return ['a small additional purchase', 'a modest repeat of the purchase', 'a small top-up of the holding'];
+    case 'insurance':
+      return ['a small extension of the cover', 'a policy review and top-up', 'a modest repeat of the cover purchase'];
+    case 'launchpad':
+      return ['a small top-up of the funds reserved for sales', 'a check-in on the allowlist status', 'a modest repeat of the registration steps'];
+    case 'chain':
+      return ['one more native transaction', 'a small native swap or transfer', 'a modest repeat of a native action'];
+    case 'payments':
+      return ['one real payment through it', 'a small real purchase', 'a modest repeat of a genuine payment'];
+    case 'privacy':
+      return ['one private transfer', 'a small shielded transfer', 'a modest repeat of the private transfer'];
+    case 'yield':
+      return ['a small top-up', 'a compound of the yield', 'a modest repeat of the deposit'];
+    default:
+      return ['a small top-up', 'a claim or rebalance', 'a vote or second deposit', 'a modest repeat of the opening action'];
+  }
+}
+
+/** "a" or "an" for a protocol name, for the templates that put an article
+ * directly before one. */
+function articleFor(name: string): string {
+  return /^[aeiou]/i.test(name) ? 'an' : 'a';
 }
 
 /** A protocol's farm plan: seven steps — setup, two actions, a cadence, a hold, a claim watch, and the risk that closes it. */
@@ -1080,7 +1127,7 @@ export function farmPlan(p: Protocol, age: number | null): string[] {
   ]);
   const opening = `${openingAction(p, family, capital, chain)}${chainNote} Cost: $${capital} of capital, ${gas} of gas per transaction. Time: about 15 minutes.`;
   const second = `${secondAction(p, family, capital, chain)} Cost: included in the position, plus ${gas} of gas each time. Time: 10 minutes a session.`;
-  const cadenceAction = pick(p.slug, 5, ['a small top-up', 'a claim or rebalance', 'a vote or second deposit', 'a modest repeat of the opening action']);
+  const cadenceAction = pick(p.slug, 5, cadenceActionsFor(family));
   const honesty = 'No one outside the protocol knows what a future programme would count; the steady history is the part within your control.';
   const cadenceCore = pick(p.slug, 2, [
     `Repeat one qualifying action for ${p.name} every week — ${cadenceAction} — so the wallet's history spans at least eight weeks rather than a single burst`,
@@ -1091,7 +1138,12 @@ export function farmPlan(p: Protocol, age: number | null): string[] {
     chain === 'Ethereum'
       ? `On Ethereum every touch costs $4–10 of gas, a heavy drag on $${capital} of capital, so batch the rhythm: ${cadenceAction} for ${p.name} once a fortnight, in larger size, instead of weekly. ${honesty} Cost: about $8–20 of gas a month. Time: 10 minutes a fortnight.`
       : `${cadenceCore}. ${honesty} Cost: about ${gas} of gas a week. Time: 10 minutes a week.`;
-  const holdStep = `Hold the position for at least ${hold} days before withdrawing anything. ${p.name} has operated ${ageText(age)} without a token, so a qualifying window measured in months, not days, is the safer bet. Cost: the $${capital} stays committed and carries the protocol's smart-contract risk. Time: ${hold} days.`;
+  const holdStep =
+    family === 'bridge'
+      ? `Keep the bridged funds at work on the far side for at least ${hold} days before bridging anything back. ${p.name} has operated ${ageText(age)} without a token, so a qualifying window measured in months, not days, is the safer bet. Cost: the $${capital} stays committed on the far side and carries bridge and far-side contract risk. Time: ${hold} days.`
+      : family === 'prediction'
+        ? `Spread the activity over at least ${hold} days: one position settled in the first week and nothing after it is a thin record. ${p.name} has operated ${ageText(age)} without a token, so a qualifying window measured in months, not days, is the safer bet. Cost: every ticket is money at risk until its market settles. Time: ${hold} days.`
+        : `Hold the position for at least ${hold} days before withdrawing anything. ${p.name} has operated ${ageText(age)} without a token, so a qualifying window measured in months, not days, is the safer bet. Cost: the $${capital} stays committed and carries the protocol's smart-contract risk. Time: ${hold} days.`;
   const claim = pick(p.slug, 3, [
     `If ${p.name} opens a points or rewards page, enrol the same wallet and check it monthly; claim only from a link the protocol itself publishes, and never pay a fee to claim. Cost: nothing to check. Time: 5 minutes a month.`,
     `Watch ${p.name}'s official announcements for a points programme or a token vote, and if one opens, register this wallet — the one with the history — rather than a new one. Cost: nothing. Time: 5 minutes a month.`,
@@ -1107,7 +1159,7 @@ function riskStep(p: Protocol, family: string): string {
   const tail = `Keep a farm log for ${n} — wallet, dates, amounts, hashes — so the position can be proved or unwound in minutes.`;
   switch (family) {
     case 'dex':
-      return `Know the failure mode before the yield: a ${n} LP position loses to simply holding when prices diverge (impermanent loss), and the pool contract is the counterparty. ${tail}`;
+      return `Know the failure mode before the yield: ${articleFor(n)} ${n} LP position loses to simply holding when prices diverge (impermanent loss), and the pool contract is the counterparty. ${tail}`;
     case 'lending':
       return `Know the failure mode: a fast collateral drop can liquidate a borrow, and ${n} itself can take bad debt in a cascade; keep the health factor above 2 and know which oracle prices your position. ${tail}`;
     case 'mint':
