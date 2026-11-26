@@ -160,10 +160,10 @@ export const MODEL_NAIVE_GLOBAL: RadarModel = {
   ...MODEL_V1,
   peer_alias_enabled: false,
   peer_min_samples: Number.MAX_SAFE_INTEGER,
-  growth_up_weight: 0,
-  growth_down_weight: 0,
-  seasoning_min: 1,
-  seasoning_max: 1,
+  growth_weight_up: 0,
+  growth_weight_down: 0,
+  seasoning_new: 1,
+  seasoning_full: 1,
   breadth_per_chain: 0,
 };
 

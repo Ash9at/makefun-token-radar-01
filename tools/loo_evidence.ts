@@ -89,10 +89,10 @@ console.log(`  overall: ${totIn}/${trials.length} = ${((totIn / trials.length) *
 console.log('--- ablations (full-set LOO median |err|) ---');
 const variants: [string, RadarModel][] = [
   ['v4 as built', MODEL],
-  ['seasoning off', { ...MODEL, seasoning_min: 1, seasoning_max: 1 }],
+  ['seasoning off', { ...MODEL, seasoning_new: 1, seasoning_full: 1 }],
   ['breadth off', { ...MODEL, breadth_per_chain: 0 }],
-  ['growth off', { ...MODEL, growth_up_weight: 0, growth_down_weight: 0 }],
-  ['seasoning+breadth+growth off', { ...MODEL, seasoning_min: 1, seasoning_max: 1, breadth_per_chain: 0, growth_up_weight: 0, growth_down_weight: 0 }],
+  ['growth off', { ...MODEL, growth_weight_up: 0, growth_weight_down: 0 }],
+  ['seasoning+breadth+growth off', { ...MODEL, seasoning_new: 1, seasoning_full: 1, breadth_per_chain: 0, growth_weight_up: 0, growth_weight_down: 0 }],
   ['v1 config', MODEL_V1],
 ];
 for (const [name, m] of variants) console.log(`  ${name}: ${medAbs(looErrors(m, subjects)).toFixed(3)}`);

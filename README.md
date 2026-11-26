@@ -33,18 +33,18 @@ A valuation model that never checks itself is a claim. This one is graded by a *
 |---|---|---|---|---|
 | **This model** | **×/÷3.2** | 26.6% | **46.9%** | −0.04 |
 | This model, size factor removed | ×/÷4.9 | 24.2% | 33.6% | −0.01 |
-| This model, growth/seasoning/breadth removed | ×/÷3.2 | 26.6% | 46.9% | −0.04 |
+| This model, growth/seasoning/breadth removed | ×/÷3.3 | 27.3% | 47.7% | −0.05 |
 | Previous version of this radar | ×/÷4.9 | 26.6% | 35.9% | −0.13 |
-| TVL × one global median (the simple rival) | ×/÷5.3 | 26.6% | 37.5% | −0.12 |
-| TVL × raw category median (the other simple rival) | ×/÷5.0 | 17.2% | 32.0% | −0.12 |
+| TVL × one global median (the simple rival) | ×/÷5.2 | 25.0% | 37.5% | −0.12 |
+| TVL × raw category median (the other simple rival) | ×/÷5.1 | 18.8% | 30.5% | −0.12 |
 
 Read the table the way the dashboard prints it — including the rows that flatter nobody:
 
 - The **size factor earns the entire improvement**: remove it and the model falls back to the previous version's record. The peer multiple and its shrinkage do the rest of the work.
-- **Growth, seasoning and breadth are accuracy-neutral** (their ablation changes nothing). They stay because the brief names 7-day growth and time running tokenless as model inputs and they encode the record honestly at ×1.00-neutral strength — but the accuracy claim does not rest on them, and this table is the proof.
+- **Growth, seasoning and breadth are accuracy-neutral** (removing all three moves the typical miss from ×/÷3.2 to ×/÷3.3 and slightly *raises* the within-2× and within-3× rates — inside the noise either way). They stay because the brief names 7-day growth and time running tokenless as model inputs and they encode the record honestly at ×1.00-neutral strength — but the accuracy claim does not rest on them, and this table is the proof.
 - The within-2× rate does **not** improve over the previous version (26.6% both). The gains are in the typical miss, the within-3× rate, and the bias.
 - Per category (on the dashboard, weakest first): the model prices RWA well (typical miss ×/÷1.9, 55.6% within 2×) and DEX protocols badly (×/÷6.4) — bridge and DEX caps are set by things TVL does not record. Bands are calibrated per category precisely so those rows carry visibly wider ranges.
-- **Band coverage is 46.1%**, measured leave-self-out (each trial's band rebuilt without it before testing) against the ~50% an interquartile band should cover — close, and per category it ranges from 66.7% (RWA) down to 27.3% (Dexs, whose errors are fat-tailed; the dashboard prints that too).
+- **Band coverage is 46.1%**, measured leave-self-out (each trial's band rebuilt without it before testing) against the ~50% an interquartile band should cover — close. Among the categories carrying their own band it ranges from 66.7% (RWA) down to 27.3% (Dexs, whose errors are fat-tailed); the dashboard's per-category table prints every category with at least 3 trials, thin ones included.
 - The backtest runs on the same snapshot the model is fitted to. Leave-one-out removes the subject from its own peer set, but the constants were chosen with these trials in view. This is a calibration of the model's error on the only labelled data that exists — not out-of-sample proof, and the dashboard says so in those words.
 
 ## Selection

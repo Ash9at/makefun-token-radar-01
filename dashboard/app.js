@@ -311,7 +311,7 @@ function init() {
     '<div class="stat"><b>' + R.watchlist_size + '</b><span>of them watchlist</span></div>' +
     '<div class="stat"><b>' + R.early_size + '</b><span>early finds added</span></div>';
   $('foot-meta').textContent =
-    'board: ' + R.board_size + ' rows (' + R.watchlist_size + ' watchlist + ' + R.early_size + ' early) · live peer set: ' +
+    'board: ' + R.board_size + ' rows (' + R.watchlist_size + ' watchlist + ' + R.early_size + ' early) · live tokens set aside: ' +
     R.live_size + ' · snapshot as of ' + R.as_of;
   fillSelects();
   renderPeers();

@@ -253,3 +253,47 @@ the band is printed under every value so overlap is visible rather than
 hidden; and deeper plan de-templating — the action and risk steps are
 already category-specific (sixteen action families, twenty-one risk
 kinds), and the totals line answers the concrete part of the charge.
+
+## Independent audit (2026-11-26) — corrections
+
+An independent audit re-derived every headline figure from the snapshot
+with a separate implementation (all 160 board rows and the full LOO
+reproduce exactly; the split-half result for the size constants also
+replicates: both halves independently select strength 1, cap 3). It
+found one real defect, in the comparison rows rather than the model:
+
+- **Three ablation/baseline configurations named model fields that do
+  not exist.** `MODEL_NAIVE_GLOBAL` in lib/model.ts, the "record
+  factors removed" ablation in lib/backtest.ts, and three variants in
+  tools/loo_evidence.ts set `growth_up_weight`, `growth_down_weight`,
+  `seasoning_min` and `seasoning_max`; the model's fields are
+  `growth_weight_up/down` and `seasoning_new/full`. Node's type
+  stripping runs the file without type-checking, so the unknown keys
+  were silently ignored: the "naive" baselines still carried the growth
+  and seasoning factors, and the "record factors removed" ablation in
+  fact removed only breadth. The Stage-4 ablation sentence above (the
+  0.520-with / 0.510-without comparison) was measured with the same
+  broken configuration and should be read as superseded by the figures
+  below.
+- **Corrected figures (identical 128 trials, factors genuinely
+  removed).** Record factors removed: median |log10 error| 0.518
+  (typical miss ×/÷3.3, bias −0.046, within 2× 27.3%, within 3× 47.7%) —
+  the accuracy-neutral conclusion stands, marginally less exact than
+  printed before. TVL × one global median: 0.715 (×/÷5.2, bias −0.123,
+  25.0% / 37.5%). TVL × raw category median: 0.709 (×/÷5.1, bias
+  −0.122, 18.8% / 30.5%). The model's own numbers, the v1 head-to-head
+  and the size-factor ablation were measured with correct
+  configurations and are unchanged. README's table now prints the
+  corrected rows.
+- Two copy corrections from the same audit: the README's per-category
+  coverage range now scopes itself to the categories carrying their own
+  band (the full table's extremes are Basis Trading 71.4% on 7 trials
+  and Cross Chain Bridge 25.0% on 4), and the dashboard footer no
+  longer calls the 24 displayed live rows the "live peer set" (the
+  peer set is 128).
+- Also measured by the audit, for the record: excluding all CEX
+  protocols from both subjects and peer sets moves the headline median
+  error from 0.510 to 0.513 (immaterial); the LOO predictions' rank
+  correlation with actual caps (Spearman 0.36) is below TVL's own
+  (0.44) — the backtest validates the magnitudes it reports, and the
+  entry claims nothing about rank skill on labelled data.

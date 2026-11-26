@@ -239,7 +239,7 @@ export function runBacktest(snapshot: Snapshot, model: RadarModel = MODEL): { ac
     baselines: [
       naive({ ...MODEL, size_strength: 0 }, 'This model, size factor removed'),
       naive(
-        { ...MODEL, growth_up_weight: 0, growth_down_weight: 0, seasoning_min: 1, seasoning_max: 1, breadth_per_chain: 0 },
+        { ...MODEL, growth_weight_up: 0, growth_weight_down: 0, seasoning_new: 1, seasoning_full: 1, breadth_per_chain: 0 },
         'This model, record factors removed',
       ),
       naive(MODEL_NAIVE_GLOBAL, 'TVL × one global median'),
